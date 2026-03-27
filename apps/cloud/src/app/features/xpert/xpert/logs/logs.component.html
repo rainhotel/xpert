@@ -12,13 +12,28 @@
     [(ngModel)]="timeRangeValue"
     class="min-w-[150px] rounded-lg shadow-sm"
   />
+  <ngm-select
+    [placeholder]="'PAC.Xpert.LogDateField' | translate: { Default: 'Filter by' }"
+    [selectOptions]="conversationDateFields"
+    [(ngModel)]="dateField"
+    (ngModelChange)="onDateFieldChange()"
+    class="min-w-[160px] rounded-lg shadow-sm"
+  />
+  <button
+    class="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+    [disabled]="loading()"
+    (click)="refreshConversations()"
+  >
+    <i class="ri-refresh-line"></i>
+    <span>{{ 'PAC.ACTIONS.Refresh' | translate: { Default: 'Refresh' } }}</span>
+  </button>
 </div>
 
 <div class="w-full relative overflow-auto flex-1" waIntersectionObserver waIntersectionThreshold="0.5">
   <table class="table-fixed w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
     <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
       <tr>
-        <th scope="col" class="sticky top-0 bg-gray-50 px-6 py-3 w-80 truncate">
+        <th scope="col" class="sticky top-0 bg-gray-50 px-6 py-3 w-96">
           {{ 'PAC.KEY_WORDS.Title' | translate: { Default: 'Title' } }}
         </th>
         <th scope="col" class="sticky top-0 bg-gray-50 px-6 py-3">
@@ -51,8 +66,24 @@
           [class.selected]="preview() === conv.id"
           (click)="togglePreview(conv.id)"
         >
-          <td class="px-4 py-2 whitespace-nowrap truncate">
-            {{ conv.title }}
+          <td class="px-4 py-2 align-top">
+            <div class="flex flex-col gap-1">
+              <div class="font-medium text-gray-900 whitespace-normal break-words">
+                {{ conv.title || ('PAC.KEY_WORDS.Empty' | translate: { Default: 'Untitled' }) }}
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs text-gray-500">
+                @if (conv.from) {
+                  <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                    {{ conv.from }}
+                  </span>
+                }
+                @if (conv.fromEndUserId) {
+                  <span class="px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
+                    {{ endUserLabel(conv.fromEndUserId) }}
+                  </span>
+                }
+              </div>
+            </div>
           </td>
           <td class="px-4 py-2">
             {{ conv.createdBy | user }}
@@ -61,7 +92,7 @@
             {{ conv.from }}
           </td>
           <td class="px-4 py-2">
-            {{ conv.fromEndUser ? (conv.fromEndUser | user) : conv.fromEndUserId }}
+            {{ endUserLabel(conv.fromEndUserId) }}
           </td>
           <td class="px-4 py-2">
             {{ conv.messageCount | number: '0.0-0' }}
@@ -147,7 +178,7 @@
       <chat-message-execution-panel
         class="h-full bg-components-panel-bg shadow-lg border-[0.5px] border-components-panel-border rounded-2xl overflow-y-auto w-[420px]"
         [id]="executionId()"
-        [xpert]="prev.xpert()"
+        [xpert]="xpert()"
         (close)="closeExecution()"
       />
     }
@@ -157,7 +188,7 @@
       class="h-full w-[420px] rounded-2xl shadow-lg overflow-auto border border-gray-100 bg-components-panel-bg-blur"
       readonly
       [conversationId]="preview()"
-      (close)="preview.set(null)"
+      (close)="closePreview()"
       (execution)="selectExecution($event)"
     />
   </div>

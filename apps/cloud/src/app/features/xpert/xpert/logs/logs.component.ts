@@ -10,10 +10,22 @@ import { TranslateModule } from '@ngx-translate/core'
 import { NgmSelectComponent } from '@cloud/app/@shared/common'
 import { UserPipe } from '@cloud/app/@shared/pipes'
 import { delayWhen, filter, switchMap, tap } from 'rxjs/operators'
-import { ChatConversationService, DateRelativePipe, OrderTypeEnum, routeAnimations, TChatConversationLog, XpertAPIService } from '@cloud/app/@core'
+import { IUser } from '@metad/contracts'
+import {
+  ChatConversationService,
+  DateRelativePipe,
+  OrderTypeEnum,
+  routeAnimations,
+  TChatConversationLog,
+  TConversationLogsDateField,
+  XpertAPIService
+} from '@cloud/app/@core'
 import { XpertComponent } from '../xpert.component'
 import { calcTimeRange, TimeRangeEnum, TimeRangeOptions } from '@metad/core'
 import { ChatConversationPreviewComponent, ChatMessageExecutionPanelComponent } from '@cloud/app/@shared/chat'
+import { UsersService } from '@metad/cloud/state'
+
+type TEndUserLoadState = 'loading' | 'loaded' | 'missing'
 
 @Component({
   standalone: true,
@@ -39,8 +51,25 @@ import { ChatConversationPreviewComponent, ChatMessageExecutionPanelComponent } 
 })
 export class XpertLogsComponent {
   TimeRanges = TimeRangeOptions
+  readonly conversationDateFields = [
+    {
+      value: 'createdAt',
+      label: {
+        en_US: 'Created Time',
+        zh_Hans: '创建时间'
+      }
+    },
+    {
+      value: 'updatedAt',
+      label: {
+        en_US: 'Updated Time',
+        zh_Hans: '更新时间'
+      }
+    }
+  ] satisfies Array<{ value: TConversationLogsDateField; label: { en_US: string; zh_Hans: string } }>
   readonly xpertService = inject(XpertAPIService)
   readonly conversationService = inject(ChatConversationService)
+  readonly usersService = inject(UsersService)
   readonly xpertComponent = inject(XpertComponent)
 
   readonly xpert = this.xpertComponent.latestXpert
@@ -53,8 +82,11 @@ export class XpertLogsComponent {
   readonly done = signal(false)
 
   readonly conversations = signal<TChatConversationLog[]>([])
+  readonly endUsers = signal<Record<string, IUser | null>>({})
+  readonly endUserStates = signal<Record<string, TEndUserLoadState>>({})
 
   readonly timeRangeValue = model<TimeRangeEnum>(TimeRangeEnum.Last7Days)
+  readonly dateField = model<TConversationLogsDateField>('createdAt')
   readonly timeRange = computed(() => calcTimeRange(this.timeRangeValue()))
   readonly timeRange$ = toObservable(this.timeRange)
 
@@ -68,6 +100,60 @@ export class XpertLogsComponent {
       this.done.set(false)
       this.loadConversations()
     })
+
+    effect(
+      () => {
+        const endUserStates = this.endUserStates()
+        const missingIds = [
+          ...new Set(
+            this.conversations()
+              .map((conversation) => conversation.fromEndUserId)
+              .filter((id): id is string => !!id && !endUserStates[id])
+          )
+        ]
+
+        if (!missingIds.length) {
+          return
+        }
+
+        this.endUserStates.update((state) => {
+          const nextState = { ...state }
+          missingIds.forEach((id) => {
+            nextState[id] = 'loading'
+          })
+          return nextState
+        })
+
+        void Promise.all(
+          missingIds.map(async (id) => {
+            try {
+              return [id, await this.usersService.getUserById(id)] as const
+            } catch {
+              return [id, null] as const
+            }
+          })
+        ).then((entries) => {
+          this.endUsers.update((state) => {
+            const nextState = { ...state }
+            entries.forEach(([id, user]) => {
+              if (user) {
+                nextState[id] = user
+              }
+            })
+            return nextState
+          })
+
+          this.endUserStates.update((state) => {
+            const nextState = { ...state }
+            entries.forEach(([id, user]) => {
+              nextState[id] = user ? 'loaded' : 'missing'
+            })
+            return nextState
+          })
+        })
+      },
+      { allowSignalWrites: true }
+    )
   }
 
   loadConversations = effectAction((origin$) => {
@@ -75,13 +161,22 @@ export class XpertLogsComponent {
       delayWhen(() => this.xpertId$.pipe(filter((id) => !!id))),
       switchMap(() => {
         this.loading.set(true)
-        return this.xpertService.getConversations(this.xpertId(), {
-          // select: ['id', 'threadId', 'title', 'status', 'createdById', 'fromEndUserId', 'updatedAt'],
-          relations: ['createdBy'],
-          order: { updatedAt: OrderTypeEnum.DESC },
-          take: this.pageSize,
-          skip: this.currentPage() * this.pageSize
-        }, this.timeRange())
+        return this.xpertService.getConversations(
+          this.xpertId(),
+          {
+            // select: ['id', 'threadId', 'title', 'status', 'createdById', 'fromEndUserId', 'updatedAt'],
+            relations: ['createdBy'],
+            order: { updatedAt: OrderTypeEnum.DESC },
+            take: this.pageSize,
+            skip: this.currentPage() * this.pageSize
+          },
+          this.timeRange(),
+          {
+            dateField: this.dateField(),
+            sortField: 'updatedAt',
+            sortOrder: 'DESC'
+          }
+        )
       }),
       tap({
         next: ({ items, total }) => {
@@ -99,6 +194,17 @@ export class XpertLogsComponent {
     )
   })
 
+  refreshConversations() {
+    this.conversations.set([])
+    this.currentPage.set(0)
+    this.done.set(false)
+    this.loadConversations()
+  }
+
+  onDateFieldChange() {
+    this.refreshConversations()
+  }
+
   onIntersection() {
     if (!this.loading() && !this.done()) {
       this.loadConversations()
@@ -106,7 +212,14 @@ export class XpertLogsComponent {
   }
 
   togglePreview(id: string) {
-    this.preview.update((state) => state === id ? null : id)
+    const nextPreview = this.preview() === id ? null : id
+    this.executionId.set(null)
+    this.preview.set(nextPreview)
+  }
+
+  closePreview() {
+    this.executionId.set(null)
+    this.preview.set(null)
   }
 
   selectExecution(id: string) {
@@ -115,6 +228,15 @@ export class XpertLogsComponent {
 
   closeExecution() {
     this.executionId.set(null)
+  }
+
+  endUserLabel(id: string | null | undefined) {
+    if (!id) {
+      return ''
+    }
+
+    const user = this.endUsers()[id]
+    return user?.name || user?.fullName || user?.firstName || user?.email || user?.username || id
   }
 
   cancelConversation(event: MouseEvent, conversation: TChatConversationLog) {
@@ -126,11 +248,7 @@ export class XpertLogsComponent {
     this.conversationService.cancelConversation(conversation.id).subscribe({
       next: () => {
         this.conversations.update((state) =>
-          state.map((item) =>
-            item.id === conversation.id
-              ? { ...item, status: 'interrupted' }
-              : item
-          )
+          state.map((item) => (item.id === conversation.id ? { ...item, status: 'interrupted' } : item))
         )
       }
     })
