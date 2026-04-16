@@ -1,9 +1,12 @@
 import {
+  ACCOUNT_BINDING_PERMISSION_SERVICE_TOKEN,
+  AccountBindingPermissionService,
   INTEGRATION_PERMISSION_SERVICE_TOKEN,
   Permissions,
   USER_PERMISSION_SERVICE_TOKEN,
   UserPermissionService
 } from '@xpert-ai/plugin-sdk'
+import { createGuardedAccountBindingPermissionService } from './account-binding-permission'
 import { createGuardedUserPermissionService } from './user-permission'
 
 export interface PluginServicePermissionHandler {
@@ -16,6 +19,22 @@ export interface PluginServicePermissionHandler {
 }
 
 const PLUGIN_SERVICE_PERMISSION_HANDLERS = new Map<any, PluginServicePermissionHandler>([
+  [
+    ACCOUNT_BINDING_PERMISSION_SERVICE_TOKEN,
+    {
+      token: ACCOUNT_BINDING_PERMISSION_SERVICE_TOKEN,
+      permissionType: 'account_binding',
+      cacheKey: 'account_binding',
+      createGuardedService: (pluginName, resolvedService, permissions) =>
+        createGuardedAccountBindingPermissionService(
+          pluginName,
+          resolvedService as AccountBindingPermissionService,
+          permissions
+        ),
+      unavailableMessage: (pluginName) =>
+        `Plugin '${pluginName}' attempted to resolve account binding service but it is not available.`
+    }
+  ],
   [
     INTEGRATION_PERMISSION_SERVICE_TOKEN,
     {
@@ -126,4 +145,5 @@ export function guardPluginResolvedService(
 
 export * from './integration-permission'
 export * from './user-permission'
+export * from './account-binding-permission'
 export * from './service-permission-guard'

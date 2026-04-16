@@ -4,6 +4,7 @@ import { ModuleRef } from '@nestjs/core'
 import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import {
+	ACCOUNT_BINDING_PERMISSION_SERVICE_TOKEN,
 	INTEGRATION_PERMISSION_SERVICE_TOKEN,
 	PLUGIN_CONFIG_RESOLVER_TOKEN,
 	PluginLifecycleMethods,
@@ -20,7 +21,11 @@ import { QueryHandlers } from './queries/handlers'
 import { LOADED_PLUGINS } from './types'
 import { PluginInstance } from './plugin-instance.entity'
 import { PluginInstanceService } from './plugin-instance.service'
-import { PluginIntegrationPermissionService, PluginUserPermissionService } from './permissions'
+import {
+	PluginAccountBindingPermissionService,
+	PluginIntegrationPermissionService,
+	PluginUserPermissionService
+} from './permissions'
 
 @Global()
 @Module({
@@ -30,11 +35,16 @@ import { PluginIntegrationPermissionService, PluginUserPermissionService } from 
 	providers: [
 		{ provide: LOADED_PLUGINS, useValue: loaded },
 		PluginConfigResolverProvider,
+		{
+			provide: ACCOUNT_BINDING_PERMISSION_SERVICE_TOKEN,
+			useExisting: PluginAccountBindingPermissionService
+		},
 		{ provide: INTEGRATION_PERMISSION_SERVICE_TOKEN, useExisting: PluginIntegrationPermissionService },
 		{ provide: USER_PERMISSION_SERVICE_TOKEN, useExisting: PluginUserPermissionService },
 		PluginConfigResolver,
 		PluginInstanceService,
 		PluginManagementService,
+		PluginAccountBindingPermissionService,
 		PluginIntegrationPermissionService,
 		PluginUserPermissionService,
 		StrategyBus,
