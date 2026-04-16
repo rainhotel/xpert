@@ -1,12 +1,15 @@
 import {
   ACCOUNT_BINDING_PERMISSION_SERVICE_TOKEN,
   AccountBindingPermissionService,
+  BOUND_IDENTITY_LOGIN_PERMISSION_SERVICE_TOKEN,
+  BoundIdentityLoginPermissionService,
   INTEGRATION_PERMISSION_SERVICE_TOKEN,
   Permissions,
   USER_PERMISSION_SERVICE_TOKEN,
   UserPermissionService
 } from '@xpert-ai/plugin-sdk'
 import { createGuardedAccountBindingPermissionService } from './account-binding-permission'
+import { createGuardedBoundIdentityLoginPermissionService } from './bound-identity-login-permission'
 import { createGuardedUserPermissionService } from './user-permission'
 
 export interface PluginServicePermissionHandler {
@@ -33,6 +36,22 @@ const PLUGIN_SERVICE_PERMISSION_HANDLERS = new Map<any, PluginServicePermissionH
         ),
       unavailableMessage: (pluginName) =>
         `Plugin '${pluginName}' attempted to resolve account binding service but it is not available.`
+    }
+  ],
+  [
+    BOUND_IDENTITY_LOGIN_PERMISSION_SERVICE_TOKEN,
+    {
+      token: BOUND_IDENTITY_LOGIN_PERMISSION_SERVICE_TOKEN,
+      permissionType: 'bound_identity_login',
+      cacheKey: 'bound_identity_login',
+      createGuardedService: (pluginName, resolvedService, permissions) =>
+        createGuardedBoundIdentityLoginPermissionService(
+          pluginName,
+          resolvedService as BoundIdentityLoginPermissionService,
+          permissions
+        ),
+      unavailableMessage: (pluginName) =>
+        `Plugin '${pluginName}' attempted to resolve bound identity login service but it is not available.`
     }
   ],
   [
@@ -146,4 +165,5 @@ export function guardPluginResolvedService(
 export * from './integration-permission'
 export * from './user-permission'
 export * from './account-binding-permission'
+export * from './bound-identity-login-permission'
 export * from './service-permission-guard'
