@@ -598,9 +598,17 @@ describe('ClawXpertConversationDetailComponent', () => {
       appendReferences: true
     })
     const reference = setComposerValue.mock.calls.at(-1)?.[0].references[0] as { text: string }
-    expect(reference.text).toContain('Reference type: HTML file element')
-    expect(reference.text).toContain('Selector: #hero')
-    expect(reference.text).toContain('DOM path: html > body > button')
+    expect(reference.text).toContain('Reference type: Target inspected HTML file element')
+    expect(reference.text).toContain(
+      'Scope: This reference is the currently inspected element only, not the entire file.'
+    )
+    expect(reference.text).toContain(
+      "Action target: Apply the user's request to THIS inspected element only; do not change the rest of the file/page unless explicitly asked."
+    )
+    expect(reference.text).toContain('Source location: index.html')
+    expect(reference.text).toContain('- Selector: #hero')
+    expect(reference.text).toContain('- DOM path: html > body > button')
+    expect(reference.text).toContain('Inspected element outerHTML:')
     expect(reference.text).toContain('<button id="hero">Launch</button>')
     expect(focusComposer).toHaveBeenCalled()
   })
@@ -655,7 +663,10 @@ describe('ClawXpertConversationDetailComponent', () => {
       appendReferences: true
     })
     const reference = setComposerValue.mock.calls.at(-1)?.[0].references[0] as { text: string }
-    expect(reference.text).toContain('Reference type: Page element')
+    expect(reference.text).toContain('Reference type: Target inspected page element')
+    expect(reference.text).toContain(
+      "Action target: Apply the user's request to THIS inspected element only; do not change the rest of the file/page unless explicitly asked."
+    )
     expect(reference.text).toContain('URL: http://localhost:4173/')
     expect(reference.text).toContain('Selector: main > h1')
     expect(reference.text).toContain('<h1 data-testid="hero-title">Hello</h1>')

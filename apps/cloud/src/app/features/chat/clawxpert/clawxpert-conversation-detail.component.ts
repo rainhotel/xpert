@@ -25,6 +25,8 @@ import {
 const WORKSPACE_FILE_REFRESH_DEBOUNCE_MS = 300
 const CONVERSATION_DETAIL_REFRESH_INTERVAL_MS = 1000
 const CONVERSATION_DETAIL_RELATIONS = ['messages']
+const INSPECTED_ELEMENT_ACTION_TARGET_TEXT =
+  "Action target: Apply to THIS inspected element only; do not change the rest of the file/page unless explicitly asked."
 
 type ChatKitCodeComposerReference = {
   type: 'code'
@@ -701,17 +703,20 @@ function toFileElementQuoteReference(reference: TChatFileElementReference): Chat
     label: reference.label?.trim() || `${reference.tagName.toLowerCase()} ${reference.selector}`,
     source,
     text: [
-      'Reference type: HTML file element',
-      `File: ${source}`,
+      'Reference type: Target inspected HTML file element',
+      'Scope: This reference is the currently inspected element only, not the entire file.',
+      INSPECTED_ELEMENT_ACTION_TARGET_TEXT,
+      `Source location: ${source}`,
       reference.documentTitle?.trim() ? `Document title: ${reference.documentTitle.trim()}` : null,
-      `Selector: ${reference.selector}`,
-      `DOM path: ${reference.domPath}`,
-      `Tag: ${reference.tagName.toLowerCase()}`,
-      reference.role?.trim() ? `Role: ${reference.role.trim()}` : null,
-      `Attributes: ${formatElementAttributes(reference.attributes)}`,
-      'Visible text:',
+      'Inspected element:',
+      `- Selector: ${reference.selector}`,
+      `- DOM path: ${reference.domPath}`,
+      `- Tag: ${reference.tagName.toLowerCase()}`,
+      reference.role?.trim() ? `- Role: ${reference.role.trim()}` : null,
+      `- Attributes: ${formatElementAttributes(reference.attributes)}`,
+      'Inspected element visible text:',
       reference.text,
-      'HTML:',
+      'Inspected element outerHTML:',
       '```html',
       reference.outerHtml,
       '```'
@@ -729,7 +734,9 @@ function toPageElementQuoteReference(reference: TChatElementReference): ChatKitQ
     label: reference.label?.trim() || `${reference.tagName.toLowerCase()} ${reference.selector}`,
     source,
     text: [
-      'Reference type: Page element',
+      'Reference type: Target inspected page element',
+      'Scope: This reference is the currently inspected element only, not the entire page.',
+      INSPECTED_ELEMENT_ACTION_TARGET_TEXT,
       source ? `Page: ${source}` : null,
       `URL: ${reference.pageUrl}`,
       `Service: ${reference.serviceId}`,

@@ -26,6 +26,9 @@ type ReferenceLike = TChatReference
 
 type ReferenceCompositionMode = 'compose' | 'preserve'
 
+const INSPECTED_ELEMENT_ACTION_TARGET_TEXT =
+    "Action target: Apply to THIS inspected element only; do not change the rest of the file/page unless explicitly asked."
+
 type ReferenceCandidate = TChatElementReferenceCandidateFields &
     TChatFileElementReferenceCandidateFields & {
     endLine?: unknown
@@ -475,7 +478,9 @@ function formatElementReference(reference: ElementReferenceLike): string {
         : '(none)'
 
     return [
-        `[Page element] ${heading}`,
+        `[Target inspected page element] ${heading}`,
+        'Scope: This reference is the currently inspected element only, not the entire page.',
+        INSPECTED_ELEMENT_ACTION_TARGET_TEXT,
         `Page: ${reference.pageTitle?.trim() || reference.pageUrl}`,
         `Selector: ${reference.selector}`,
         `Tag: ${reference.tagName}`,
@@ -503,17 +508,20 @@ function formatFileElementReference(reference: FileElementReferenceLike): string
             : null
 
     return [
-        `[HTML file element] ${heading}`,
-        `File: ${reference.filePath}${sourceRange ? `:${sourceRange}` : ''}`,
+        `[Target inspected HTML file element] ${heading}`,
+        'Scope: This reference is the currently inspected element only, not the entire file.',
+        INSPECTED_ELEMENT_ACTION_TARGET_TEXT,
+        `Source location: ${reference.filePath}${sourceRange ? `:${sourceRange}` : ''}`,
         ...(isNonEmptyString(reference.documentTitle) ? [`Document title: ${reference.documentTitle.trim()}`] : []),
-        `Selector: ${reference.selector}`,
-        `DOM path: ${reference.domPath}`,
-        `Tag: ${reference.tagName}`,
-        ...(isNonEmptyString(reference.role) ? [`Role: ${reference.role.trim()}`] : []),
-        `Attributes: ${attributes}`,
-        'Text:',
+        'Inspected element:',
+        `- Selector: ${reference.selector}`,
+        `- DOM path: ${reference.domPath}`,
+        `- Tag: ${reference.tagName}`,
+        ...(isNonEmptyString(reference.role) ? [`- Role: ${reference.role.trim()}`] : []),
+        `- Attributes: ${attributes}`,
+        'Inspected element visible text:',
         reference.text,
-        'HTML:',
+        'Inspected element outerHTML:',
         '```html',
         reference.outerHtml,
         '```'
@@ -525,9 +533,7 @@ export function buildReferencedPrompt(references: ReferenceLike[]): string {
         return ''
     }
 
-    const header = references.every((reference) => reference.type === 'code')
-        ? 'Referenced code:'
-        : 'Referenced content:'
+    const header = getReferencedPromptHeader(references)
     const body = references
         .map((reference) =>
             reference.type === 'quote'
@@ -543,6 +549,40 @@ export function buildReferencedPrompt(references: ReferenceLike[]): string {
         .join('\n\n')
 
     return `${header}\n${body}`
+}
+
+function getReferencedPromptHeader(references: ReferenceLike[]): string {
+    if (references.every((reference) => reference.type === 'code')) {
+        return 'Referenced code:'
+    }
+
+    const targetElementCount = references.filter((reference) => isTargetElementReference(reference)).length
+    if (!targetElementCount) {
+        return 'Referenced content:'
+    }
+
+    if (targetElementCount !== references.length) {
+        return 'Referenced target elements and context:'
+    }
+
+    return references.length === 1 ? 'Referenced target element:' : 'Referenced target elements:'
+}
+
+function isTargetElementReference(reference: ReferenceLike): boolean {
+    if (reference.type === 'element' || reference.type === 'file_element') {
+        return true
+    }
+
+    if (reference.type !== 'quote') {
+        return false
+    }
+
+    return (
+        reference.text.includes(INSPECTED_ELEMENT_ACTION_TARGET_TEXT) ||
+        reference.text.includes('Reference type: Target inspected HTML file element') ||
+        reference.text.includes('Reference type: Inspected HTML file element') ||
+        reference.text.includes('Reference type: Target inspected page element')
+    )
 }
 
 export function buildReferencedCodePrompt(references: ChatKitCodeReference[]): string {
