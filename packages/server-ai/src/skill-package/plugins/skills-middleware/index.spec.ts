@@ -139,6 +139,49 @@ describe('SkillsMiddleware', () => {
     expect(toolNames).toEqual(['read_skill_file', 'search_skill_repository', 'install_workspace_skills'])
   })
 
+  it('allows read_skill_file inside the current working directory, including .agents skills', async () => {
+    const middleware = createMiddleware()
+    const execute = jest.fn().mockResolvedValue({
+      exitCode: 0,
+      output: 'agent skill instructions'
+    })
+    const sandbox = {
+      workingDirectory: runtimeWorkingDirectory,
+      backend: {
+        id: 'sandbox-1',
+        execute
+      }
+    }
+
+    const instance = await middleware.createMiddleware({}, createContext())
+    const handler = jest.fn(async (request) => request)
+    await instance.wrapModelCall(
+      {
+        runtime: {
+          configurable: {
+            sandbox
+          }
+        },
+        state: {},
+        systemMessage: new SystemMessage('base')
+      } as never,
+      handler
+    )
+
+    const readTool = getTool(instance, 'read_skill_file')
+    await expect(
+      readTool.invoke({
+        path: `${runtimeWorkingDirectory}/.agents/skills/browser/SKILL.md`
+      })
+    ).resolves.toBe('agent skill instructions')
+    await expect(
+      readTool.invoke({
+        path: '/workspace/other/.agents/skills/browser/SKILL.md'
+      })
+    ).rejects.toThrow('Access to path "/workspace/other/.agents/skills/browser/SKILL.md" is denied.')
+    expect(execute).toHaveBeenCalledTimes(1)
+  })
+
   it('searches all visible repositories with the default limit when no repository scope is configured', async () => {
     const middleware = createMiddleware()
     const skillIndexService = Reflect.get(middleware, 'skillIndexService') as {
@@ -358,6 +401,8 @@ describe('SkillsMiddleware', () => {
     )
     expect(nextResult.systemMessage.content).toContain('Weather')
     expect(nextResult.systemMessage.content).toContain('Skill Discovery')
+    expect(nextResult.systemMessage.content).toContain('npx skills add')
+    expect(nextResult.systemMessage.content).toContain('.agents/skills')
   })
 
   it('rejects auto discovery installs over the configured per-call limit', async () => {
@@ -400,15 +445,6 @@ describe('SkillsMiddleware', () => {
       {
         skills: ['skill-a', 'skill-b']
       },
-      {
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        projectId: null,
-        node: {} as any,
-        tools: new Map(),
-        runtime: {} as any
-      }
       createContext()
     )
 

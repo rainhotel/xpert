@@ -7,7 +7,8 @@ This middleware implements Anthropic's "Agent Skills" pattern with progressive d
 3. Agent reads full SKILL.md content when relevant to a task
 
 Skills directory structure (runtime working directory):
-Runtime-level: {PWD}/.xpert/skills/
+Runtime-synced skills: {PWD}/.xpert/skills/
+CLI-installed skills: {PWD}/.agents/skills/
 
 Example structure:
 {PWD}/.xpert/skills/
@@ -140,6 +141,7 @@ Automatic skill discovery is enabled. If the installed skills above are not enou
 1. Use search_skill_repository to find relevant skills from the indexed skill repositories.
 2. Install only the most relevant skills with install_workspace_skills.
 3. After installation, read the installed skill's SKILL.md with read_skill_file and follow its instructions.
+4. You can also add skills yourself with \`npx skills add\`; it installs skills under the current working directory's \`.agents/skills\`. Read those SKILL.md files with read_skill_file using paths inside the current working directory.
 
 Search only when a new skill is likely to materially improve the answer. Do not install unrelated or speculative skills.`
 const SKILLS_SYSTEM_PROMPT = `
@@ -194,7 +196,8 @@ Remember: Skills are tools to make you more capable and consistent. When in doub
     - Agent reads full SKILL.md content when a skill is relevant (progressive disclosure)
 
     Supports runtime-scoped skills stored under the sandbox working directory:
-    - Runtime skills: {PWD}/.xpert/skills/
+    - Runtime-synced skills: {PWD}/.xpert/skills/
+    - CLI-installed skills: {PWD}/.agents/skills/
 
     Args:
         skills_dir: Path to the runtime skills directory.
@@ -581,6 +584,10 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 		return join(workingDirectory, RUNTIME_SKILLS_DIRECTORY)
 	}
 
+	private resolveRuntimeRootInContainer(sandbox: unknown): string {
+		return this.getSandboxWorkingDirectory(sandbox) || FALLBACK_RUNTIME_ROOT_IN_CONTAINER
+	}
+
 	private async acquireFallbackSandboxBackend(
 		tenantId: string,
 		userId: string,
@@ -634,13 +641,13 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 		 */
 		const readSkillFile = tool(
 			async ({ path }, config) => {
-				const skillsRootInContainer = runtimeSkillsRootInContainer
-				const fullPath = this.isSafePath(path, skillsRootInContainer) ? path : null
+				const sandbox = this.getSandboxFromToolConfig(config) ?? runtimeSandbox
+				const runtimeRoot = this.resolveRuntimeRootInContainer(sandbox)
+				const fullPath = this.resolvePathInsideBase(path, runtimeRoot)
 				if (!fullPath) {
 					throw new Error(`Access to path "${path}" is denied.`)
 				}
 
-				const sandbox = this.getSandboxFromToolConfig(config) ?? runtimeSandbox
 				const sandboxBackend = resolveSandboxBackend(sandbox)
 				if (sandboxBackend) {
 					const result = await sandboxBackend.execute(`cat ${this.escapeForShell(fullPath)}`)
@@ -654,7 +661,7 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 					tenantId,
 					userId,
 					projectId,
-					runtimeWorkingDirectory || undefined
+					this.getSandboxWorkingDirectory(sandbox) || runtimeWorkingDirectory || undefined
 				)
 				const result = await fallbackBackend.execute(`cat ${this.escapeForShell(fullPath)}`)
 				if (result.exitCode !== 0) {
@@ -664,9 +671,9 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 			},
 			{
 				name: 'read_skill_file',
-				description: `Read a skill's file from the skills library. Use this to read the full SKILL.md instructions when a skill is relevant to the user's task.`,
+				description: `Read a skill's file from the current working directory. Use this to read full SKILL.md instructions from installed skills, including .xpert/skills and .agents/skills.`,
 				schema: z.object({
-					path: z.string().describe("The absolute path to the skill's file to read.")
+					path: z.string().describe("The path to the skill's file to read. It must stay inside the current working directory.")
 				})
 			}
 		)
@@ -916,6 +923,8 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 					runtimeSkillIds.length > 0
 				) {
 					this.appendWorkspaceSkills(workspaceSkillSelections, runtimeWorkspaceId, runtimeSkillIds)
+				}
+				if (runtimeSkillSelectionMode !== 'workspace_blacklist') {
 					const autoInstalledSkillIds = autoInstalledSkillSelections.get(runtimeWorkspaceId)
 					if (autoInstalledSkillIds?.size) {
 						this.appendWorkspaceSkills(
@@ -1363,6 +1372,16 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 			return !relativePath.startsWith('..') && !isAbsolute(relativePath)
 		} catch {
 			return false
+		}
+	}
+
+	private resolvePathInsideBase(target: string, baseDir: string): string | null {
+		try {
+			const resolvedBase = resolve(baseDir)
+			const resolvedPath = isAbsolute(target) ? resolve(target) : resolve(resolvedBase, target)
+			return this.isSafePath(resolvedPath, resolvedBase) ? resolvedPath : null
+		} catch {
+			return null
 		}
 	}
 }
