@@ -1,6 +1,10 @@
 <pac-file-tree
-  class="lg:block"
+  class="min-h-0"
   [class.hidden]="mobilePane() !== 'tree'"
+  [ngClass]="{
+    'lg:block': fileTreeVisible(),
+    'lg:hidden': !fileTreeVisible()
+  }"
   [title]="'PAC.Files.FileTree' | translate: { Default: 'File Tree' }"
   [zSize]="treeSize()"
   [hasContext]="!!rootId()"
@@ -58,6 +62,8 @@
   [downloadable]="canDownloadActiveFile()"
   [referenceable]="referenceable()"
   [previewUrl]="activePreviewUrl()"
+  [sideMenuToggleVisible]="true"
+  [sideMenuVisible]="fileTreeVisible()"
   [mode]="panelMode()"
   [readOnlyHint]="
     'PAC.Files.ReadOnlyFileHint'
@@ -88,6 +94,7 @@
   (referenceFile)="referenceActiveFile()"
   (referenceElement)="referenceFileElement($event)"
   (referenceSelection)="referenceSelectedRange($event)"
+  (sideMenuToggle)="toggleFileTree()"
   (back)="mobilePane.set('tree')"
 />
 

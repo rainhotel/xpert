@@ -20,8 +20,17 @@ jest.mock('@xpert-ai/ocap-angular/common', () => {
 })
 
 jest.mock('@xpert-ai/headless-ui', () => {
-  const { Component, EventEmitter, forwardRef, Input, Output } = jest.requireActual('@angular/core')
+  const { Component, Directive, EventEmitter, forwardRef, Input, Output } = jest.requireActual('@angular/core')
   const { NG_VALUE_ACCESSOR } = jest.requireActual('@angular/forms')
+
+  @Directive({
+    standalone: true,
+    selector: '[zTooltip]'
+  })
+  class ZardTooltipDirective {
+    @Input() zTooltip?: unknown
+    @Input() zPosition?: string
+  }
 
   @Component({
     standalone: true,
@@ -67,7 +76,8 @@ jest.mock('@xpert-ai/headless-ui', () => {
 
   return {
     ZardSegmentedComponent,
-    ZardSegmentedItemComponent
+    ZardSegmentedItemComponent,
+    ZardTooltipImports: [ZardTooltipDirective]
   }
 })
 
@@ -185,6 +195,28 @@ describe('FileViewerComponent', () => {
     component.emitFileReference()
 
     expect(fileReferences).toEqual([1])
+  })
+
+  it('emits sidebar toggle clicks and updates the desktop toggle icon', () => {
+    const fixture = TestBed.createComponent(FileViewerComponent)
+    fixture.componentRef.setInput('sideMenuToggleVisible', true)
+    fixture.componentRef.setInput('sideMenuVisible', true)
+    fixture.detectChanges()
+
+    const toggles: number[] = []
+    fixture.componentInstance.sideMenuToggle.subscribe(() => toggles.push(1))
+
+    const button = fixture.debugElement.query(By.css('[data-sidebar-toggle-button="viewer"]'))
+    expect(button).not.toBeNull()
+    expect(button.nativeElement.querySelector('i')?.classList.contains('ri-sidebar-fold-line')).toBe(true)
+
+    ;(button.nativeElement as HTMLButtonElement).click()
+    expect(toggles).toEqual([1])
+
+    fixture.componentRef.setInput('sideMenuVisible', false)
+    fixture.detectChanges()
+
+    expect(button.nativeElement.querySelector('i')?.classList.contains('ri-sidebar-unfold-line')).toBe(true)
   })
 
   it('disables the inline selection action in markdown preview while keeping full-file references', () => {

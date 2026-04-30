@@ -14,6 +14,7 @@ import {
   model,
   output,
   signal,
+  untracked,
   viewChild
 } from '@angular/core'
 import { injectConfirmDelete } from '@xpert-ai/ocap-angular/common'
@@ -24,8 +25,10 @@ import { getErrorMessage, injectToastr, TFile, TFileDirectory } from '../../../@
 import { FileEditorSelection, mapFileLanguageFromPath } from '../editor/editor.component'
 import { FileTreeComponent, type FileTreeUploadKind } from '../tree/tree.component'
 import {
+  collectExpandedDirectoryPaths,
   FileTreeNode,
   findPreferredFile,
+  mergeFileTreeState,
   prepareFileTree,
   removeFileTreeNode,
   updateFileTreeNode
@@ -66,6 +69,11 @@ type FileWorkbenchPreviewResource = {
   url: string | null
 }
 
+type LoadDirectoryChildrenOptions = {
+  merge?: boolean
+  requestToken?: number
+}
+
 const DEFAULT_EDITABLE_EXTENSIONS = [
   'md',
   'mdx',
@@ -93,7 +101,10 @@ const DEFAULT_MARKDOWN_EXTENSIONS = ['md', 'mdx']
   templateUrl: './workbench.component.html',
   styleUrls: ['./workbench.component.css'],
   imports: [CommonModule, TranslateModule, FileTreeComponent, FileViewerComponent],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.xp-file-workbench--tree-hidden]': '!fileTreeVisible()'
+  }
 })
 export class FileWorkbenchComponent {
   readonly #destroyRef = inject(DestroyRef)
@@ -129,6 +140,7 @@ export class FileWorkbenchComponent {
   readonly downloadingPaths = signal<Set<string>>(new Set())
   readonly deletingPaths = signal<Set<string>>(new Set())
   readonly uploading = signal(false)
+  readonly fileTreeVisible = signal(true)
   readonly fileTree = signal<FileTreeNode[]>([])
   readonly activeFilePath = signal<string | null>(null)
   readonly activeFile = signal<TFile | null>(null)
@@ -193,18 +205,31 @@ export class FileWorkbenchComponent {
   #pendingNavigationAction: (() => Promise<void>) | null = null
   #treeRequestToken = 0
   #fileRequestToken = 0
+  #activeRootId: string | null = null
   #activePreviewObjectUrl: string | null = null
 
   readonly #reloadRootEffect = effect(() => {
-    const rootId = this.rootId()
+    const rootId = this.rootId() ?? null
     this.reloadKey()
+    this.filesLoader()
 
     if (!rootId) {
+      this.#activeRootId = null
       this.resetState()
       return
     }
 
-    void this.reloadRootTree(rootId)
+    if (this.#activeRootId !== rootId) {
+      this.#activeRootId = rootId
+      untracked(() => {
+        void Promise.resolve().then(() => this.reloadRootTree(rootId))
+      })
+      return
+    }
+
+    untracked(() => {
+      void Promise.resolve().then(() => this.refreshRootTree(rootId))
+    })
   })
 
   constructor() {
@@ -215,6 +240,10 @@ export class FileWorkbenchComponent {
 
   isEditableFile(filePath: string | null | undefined) {
     return !!filePath && this.#editableExtensionSet().has(fileExtension(filePath))
+  }
+
+  toggleFileTree() {
+    this.fileTreeVisible.update((visible) => !visible)
   }
 
   async guardDirtyBefore(action: () => Promise<void> | void) {
@@ -576,7 +605,55 @@ export class FileWorkbenchComponent {
     }
   }
 
-  private async loadDirectoryChildren(filePath: string) {
+  private async refreshRootTree(rootId: string) {
+    const filesLoader = this.filesLoader()
+    if (!filesLoader) {
+      this.resetState()
+      return
+    }
+
+    const requestToken = ++this.#treeRequestToken
+    const expandedDirectoryPaths = collectExpandedDirectoryPaths(this.fileTree())
+    this.treeLoading.set(true)
+
+    try {
+      const files = await resolveAsyncValue(filesLoader())
+      if (requestToken !== this.#treeRequestToken || this.rootId() !== rootId) {
+        return
+      }
+
+      this.fileTree.update((state) => mergeFileTreeState(state, prepareFileTree(files ?? [])))
+
+      for (const filePath of expandedDirectoryPaths) {
+        if (requestToken !== this.#treeRequestToken || this.rootId() !== rootId) {
+          return
+        }
+
+        await this.loadDirectoryChildren(filePath, {
+          merge: true,
+          requestToken
+        })
+      }
+
+      if (!this.activeFilePath()) {
+        const preferredFile = findPreferredFile(this.fileTree(), (filePath) => this.isEditableFile(filePath))
+        if (preferredFile?.fullPath) {
+          await this.loadActiveFile(preferredFile.fullPath)
+        }
+      }
+    } catch (error) {
+      this.#toastr.danger(
+        getErrorMessage(error) ||
+          this.#translate.instant('PAC.Files.LoadFilesFailed', { Default: 'Failed to load files' })
+      )
+    } finally {
+      if (requestToken === this.#treeRequestToken) {
+        this.treeLoading.set(false)
+      }
+    }
+  }
+
+  private async loadDirectoryChildren(filePath: string, options: LoadDirectoryChildrenOptions = {}) {
     const filesLoader = this.filesLoader()
     const rootId = this.rootId()
     if (!filesLoader || !rootId) {
@@ -586,16 +663,30 @@ export class FileWorkbenchComponent {
     this.fileTreeLoadingPaths.update((paths) => new Set(paths).add(filePath))
     try {
       const files = await resolveAsyncValue(filesLoader(filePath))
-      if (this.rootId() !== rootId) {
+      if (this.rootId() !== rootId || (options.requestToken != null && options.requestToken !== this.#treeRequestToken)) {
         return
       }
 
       this.fileTree.update((state) =>
-        updateFileTreeNode(state, filePath, (node) => ({
-          ...node,
-          expanded: true,
-          children: prepareFileTree(files ?? [])
-        }))
+        updateFileTreeNode(state, filePath, (node) => {
+          const nextChildren = prepareFileTree(files ?? [])
+          const children = options.merge
+            ? mergeFileTreeState(
+                Array.isArray(node.children) ? (node.children as FileTreeNode[]) : [],
+                nextChildren
+              )
+            : nextChildren
+
+          if (node.expanded && node.children === children) {
+            return node
+          }
+
+          return {
+            ...node,
+            expanded: true,
+            children
+          }
+        })
       )
     } catch (error) {
       this.#toastr.danger(
@@ -766,7 +857,9 @@ export class FileWorkbenchComponent {
       return
     }
 
-    this.fileTree.update((state) => updateFileTreeNode(state, targetPath, (node) => ({ ...node, expanded: true })))
+    this.fileTree.update((state) =>
+      updateFileTreeNode(state, targetPath, (node) => (node.expanded ? node : { ...node, expanded: true }))
+    )
     await this.loadDirectoryChildren(targetPath)
   }
 
@@ -999,29 +1092,6 @@ function resolveUploadDestinationPath(targetPath: string, relativePath?: string 
   const normalizedRelativePath = normalizeUploadRelativePath(relativePath)
   const relativeDirectoryPath = normalizedRelativePath ? parentDirectoryPath(normalizedRelativePath) : ''
   return [normalizedTargetPath, relativeDirectoryPath].filter(Boolean).join('/')
-}
-
-function mergeFileTreeState(previous: FileTreeNode[], next: FileTreeNode[]) {
-  const previousMap = new Map(previous.map((item) => [item.fullPath || item.filePath, item] as const))
-
-  return next.map((item) => {
-    const currentPath = item.fullPath || item.filePath
-    const previousItem = currentPath ? previousMap.get(currentPath) : undefined
-    const nextChildren = Array.isArray(item.children)
-      ? mergeFileTreeState(
-          Array.isArray(previousItem?.children) ? (previousItem.children as FileTreeNode[]) : [],
-          item.children
-        )
-      : previousItem?.expanded && Array.isArray(previousItem.children)
-        ? (previousItem.children as FileTreeNode[])
-        : item.children
-
-    return {
-      ...item,
-      expanded: previousItem?.expanded ?? item.expanded,
-      children: nextChildren
-    }
-  })
 }
 
 async function resolveAsyncValue<T>(value: AsyncValue<T>): Promise<T> {

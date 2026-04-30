@@ -16,7 +16,7 @@ import {
 } from '@angular/core'
 import { NgmSpinComponent } from '@xpert-ai/ocap-angular/common'
 import { TranslateModule } from '@ngx-translate/core'
-import { ZardSegmentedComponent, ZardSegmentedItemComponent } from '@xpert-ai/headless-ui'
+import { ZardSegmentedComponent, ZardSegmentedItemComponent, ZardTooltipImports } from '@xpert-ai/headless-ui'
 import { MarkdownModule } from 'ngx-markdown'
 import { firstValueFrom } from 'rxjs'
 import type { TChatFileElementReference, TFile } from '@xpert-ai/contracts'
@@ -47,6 +47,7 @@ type FileViewerPreviewSelection = {
     NgmSpinComponent,
     ZardSegmentedComponent,
     ZardSegmentedItemComponent,
+    ...ZardTooltipImports,
     FileEditorComponent,
     FilePreviewContentComponent
   ],
@@ -68,6 +69,8 @@ export class FileViewerComponent {
   readonly downloadable = input(false)
   readonly referenceable = input(false)
   readonly previewUrl = input<string | null>(null)
+  readonly sideMenuToggleVisible = input(false)
+  readonly sideMenuVisible = input(true)
   readonly mode = model<FilePanelMode>('view')
   readonly readOnlyHint = input(
     'This file is shown in read-only mode. Only markdown, code, and selected text formats can be edited.'
@@ -155,6 +158,7 @@ export class FileViewerComponent {
   readonly referenceFile = output<void>()
   readonly referenceElement = output<TChatFileElementReference>()
   readonly referenceSelection = output<FileEditorSelection>()
+  readonly sideMenuToggle = output<void>()
 
   readonly #resetPreviewSelectionEffect = effect(() => {
     this.filePath()
