@@ -5,6 +5,8 @@ import {
     STATE_VARIABLE_HUMAN,
     TChatElementReference,
     TChatElementReferenceCandidateFields,
+    TChatFileElementReference,
+    TChatFileElementReferenceCandidateFields,
     TChatReference
 } from '@xpert-ai/contracts'
 
@@ -18,11 +20,14 @@ type ImageReferenceLike = ChatKitImageReference
 
 type ElementReferenceLike = TChatElementReference
 
+type FileElementReferenceLike = TChatFileElementReference
+
 type ReferenceLike = TChatReference
 
 type ReferenceCompositionMode = 'compose' | 'preserve'
 
-type ReferenceCandidate = TChatElementReferenceCandidateFields & {
+type ReferenceCandidate = TChatElementReferenceCandidateFields &
+    TChatFileElementReferenceCandidateFields & {
     endLine?: unknown
     label?: unknown
     language?: unknown
@@ -87,6 +92,22 @@ type ElementReferenceCandidate = ReferenceCandidate & {
     role?: string
 }
 
+type FileElementReferenceCandidate = ReferenceCandidate & {
+    type: 'file_element'
+    attributes: Array<{ name: string; value: string }>
+    documentTitle?: string
+    domPath: string
+    filePath: string
+    outerHtml: string
+    role?: string
+    selector: string
+    sourceEndLine?: number
+    sourceStartLine?: number
+    tagName: string
+    text: string
+    label?: string
+}
+
 type ElementAttributeCandidate = {
     name?: unknown
     value?: unknown
@@ -134,6 +155,10 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isOptionalNumber(value: unknown): value is number | undefined {
     return value === undefined || (typeof value === 'number' && Number.isFinite(value))
+}
+
+function isOptionalPositiveInteger(value: unknown): value is number | undefined {
+    return value === undefined || isPositiveInteger(value)
 }
 
 function toOptionalString(value: string | undefined): string | undefined {
@@ -249,6 +274,31 @@ export function isElementReferenceLike(value: unknown): value is ElementReferenc
     )
 }
 
+export function isFileElementReferenceLike(value: unknown): value is FileElementReferenceCandidate {
+    if (!isObjectLike(value)) {
+        return false
+    }
+
+    const reference = value as ReferenceCandidate
+
+    return (
+        reference.type === 'file_element' &&
+        isNonEmptyString(reference.text) &&
+        isNonEmptyString(reference.filePath) &&
+        isNonEmptyString(reference.selector) &&
+        isNonEmptyString(reference.domPath) &&
+        isNonEmptyString(reference.tagName) &&
+        isNonEmptyString(reference.outerHtml) &&
+        Array.isArray(reference.attributes) &&
+        reference.attributes.every((attribute) => isElementAttribute(attribute)) &&
+        isOptionalString(reference.label) &&
+        isOptionalString(reference.documentTitle) &&
+        isOptionalString(reference.role) &&
+        isOptionalPositiveInteger(reference.sourceStartLine) &&
+        isOptionalPositiveInteger(reference.sourceEndLine)
+    )
+}
+
 function toCodeReference(reference: CodeReferenceCandidate): ChatKitCodeReference {
     return {
         type: 'code',
@@ -312,6 +362,30 @@ function toElementReference(reference: ElementReferenceCandidate): TChatElementR
     }
 }
 
+function toFileElementReference(reference: FileElementReferenceCandidate): TChatFileElementReference {
+    return {
+        type: 'file_element',
+        attributes: reference.attributes,
+        domPath: reference.domPath,
+        filePath: reference.filePath,
+        outerHtml: reference.outerHtml,
+        selector: reference.selector,
+        tagName: reference.tagName,
+        text: reference.text,
+        ...(toOptionalString(reference.label) ? { label: toOptionalString(reference.label) } : {}),
+        ...(toOptionalString(reference.documentTitle)
+            ? { documentTitle: toOptionalString(reference.documentTitle) }
+            : {}),
+        ...(toOptionalString(reference.role) ? { role: toOptionalString(reference.role) } : {}),
+        ...(toOptionalNumber(reference.sourceStartLine) !== undefined
+            ? { sourceStartLine: toOptionalNumber(reference.sourceStartLine) }
+            : {}),
+        ...(toOptionalNumber(reference.sourceEndLine) !== undefined
+            ? { sourceEndLine: toOptionalNumber(reference.sourceEndLine) }
+            : {})
+    }
+}
+
 export function normalizeReferenceLike(value: unknown): ReferenceLike | null {
     if (isQuoteReferenceLike(value)) {
         return toQuoteReference(value)
@@ -323,6 +397,10 @@ export function normalizeReferenceLike(value: unknown): ReferenceLike | null {
 
     if (isElementReferenceLike(value)) {
         return toElementReference(value)
+    }
+
+    if (isFileElementReferenceLike(value)) {
+        return toFileElementReference(value)
     }
 
     if (isCodeReferenceLike(value)) {
@@ -412,6 +490,36 @@ function formatElementReference(reference: ElementReferenceLike): string {
     ].join('\n')
 }
 
+function formatFileElementReference(reference: FileElementReferenceLike): string {
+    const heading = reference.label?.trim() || `${reference.tagName.toLowerCase()} ${reference.selector}`
+    const attributes = reference.attributes.length
+        ? reference.attributes.map(({ name, value }) => `${name}="${value}"`).join(' ')
+        : '(none)'
+    const sourceRange =
+        typeof reference.sourceStartLine === 'number'
+            ? reference.sourceStartLine === reference.sourceEndLine
+                ? `${reference.sourceStartLine}`
+                : `${reference.sourceStartLine}-${reference.sourceEndLine ?? reference.sourceStartLine}`
+            : null
+
+    return [
+        `[HTML file element] ${heading}`,
+        `File: ${reference.filePath}${sourceRange ? `:${sourceRange}` : ''}`,
+        ...(isNonEmptyString(reference.documentTitle) ? [`Document title: ${reference.documentTitle.trim()}`] : []),
+        `Selector: ${reference.selector}`,
+        `DOM path: ${reference.domPath}`,
+        `Tag: ${reference.tagName}`,
+        ...(isNonEmptyString(reference.role) ? [`Role: ${reference.role.trim()}`] : []),
+        `Attributes: ${attributes}`,
+        'Text:',
+        reference.text,
+        'HTML:',
+        '```html',
+        reference.outerHtml,
+        '```'
+    ].join('\n')
+}
+
 export function buildReferencedPrompt(references: ReferenceLike[]): string {
     if (!references.length) {
         return ''
@@ -428,7 +536,9 @@ export function buildReferencedPrompt(references: ReferenceLike[]): string {
                   ? formatImageReference(reference)
                   : reference.type === 'element'
                     ? formatElementReference(reference)
-                    : formatCodeReference(reference)
+                    : reference.type === 'file_element'
+                      ? formatFileElementReference(reference)
+                      : formatCodeReference(reference)
         )
         .join('\n\n')
 

@@ -1,6 +1,75 @@
 import { buildReferencedPrompt, hydrateSendRequestHumanInput, normalizeReferences } from './human-input'
 
 describe('human-input references', () => {
+    it('normalizes html file element references and formats source location metadata', () => {
+        const references = normalizeReferences([
+            {
+                type: 'file_element',
+                filePath: 'src/index.html',
+                documentTitle: 'Landing',
+                selector: '#hero-cta',
+                domPath: 'html > body > main > button',
+                tagName: 'button',
+                role: 'button',
+                text: 'Launch',
+                outerHtml: '<button id="hero-cta">Launch</button>',
+                attributes: [
+                    {
+                        name: 'id',
+                        value: 'hero-cta'
+                    }
+                ],
+                sourceStartLine: 12,
+                sourceEndLine: 12
+            }
+        ])
+
+        expect(references).toEqual([
+            {
+                type: 'file_element',
+                filePath: 'src/index.html',
+                documentTitle: 'Landing',
+                selector: '#hero-cta',
+                domPath: 'html > body > main > button',
+                tagName: 'button',
+                role: 'button',
+                text: 'Launch',
+                outerHtml: '<button id="hero-cta">Launch</button>',
+                attributes: [
+                    {
+                        name: 'id',
+                        value: 'hero-cta'
+                    }
+                ],
+                sourceStartLine: 12,
+                sourceEndLine: 12
+            }
+        ])
+
+        const prompt = buildReferencedPrompt(references)
+        expect(prompt).toContain('Referenced content:')
+        expect(prompt).toContain('[HTML file element] button #hero-cta')
+        expect(prompt).toContain('File: src/index.html:12')
+        expect(prompt).toContain('Selector: #hero-cta')
+        expect(prompt).toContain('DOM path: html > body > main > button')
+        expect(prompt).toContain('HTML:')
+    })
+
+    it('rejects incomplete html file element references', () => {
+        expect(
+            normalizeReferences([
+                {
+                    type: 'file_element',
+                    filePath: 'src/index.html',
+                    selector: '#hero-cta',
+                    tagName: 'button',
+                    text: 'Launch',
+                    attributes: []
+                }
+            ])
+        ).toEqual([])
+    })
+
     it('normalizes element references and formats them as referenced content', () => {
         const references = normalizeReferences([
             {

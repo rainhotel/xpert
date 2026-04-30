@@ -167,6 +167,159 @@ describe('FilePreviewContentComponent', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:html-preview-2')
   })
 
+  it('toggles html inspect mode from the preview toolbar', () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: jest.fn(() => 'blob:html-preview-inspect')
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: jest.fn()
+    })
+
+    const fixture = TestBed.createComponent(FilePreviewContentComponent)
+    fixture.componentRef.setInput('filePath', 'index.html')
+    fixture.componentRef.setInput('fileName', 'index.html')
+    fixture.componentRef.setInput('previewKind', 'html')
+    fixture.componentRef.setInput('referenceable', true)
+    fixture.componentRef.setInput('content', '<!doctype html><html><body><button>Launch</button></body></html>')
+    fixture.detectChanges()
+
+    const button = fixture.nativeElement.querySelector('[data-html-inspect-button="true"]') as HTMLButtonElement | null
+    expect(button).not.toBeNull()
+    expect(fixture.componentInstance.htmlInspectMode()).toBe(false)
+
+    button?.click()
+    fixture.detectChanges()
+
+    expect(fixture.componentInstance.htmlInspectMode()).toBe(true)
+    expect(button?.className).toContain('btn-primary')
+  })
+
+  it('emits file element references from valid html inspector messages', () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: jest.fn(() => 'blob:html-preview-reference')
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: jest.fn()
+    })
+
+    const fixture = TestBed.createComponent(FilePreviewContentComponent)
+    const emitted: unknown[] = []
+    fixture.componentInstance.fileElementReference.subscribe((value) => emitted.push(value))
+    fixture.componentRef.setInput('filePath', 'src/index.html')
+    fixture.componentRef.setInput('fileName', 'index.html')
+    fixture.componentRef.setInput('previewKind', 'html')
+    fixture.componentRef.setInput('referenceable', true)
+    fixture.componentRef.setInput(
+      'content',
+      '<!doctype html>\n<html><body>\n<button id="hero">Launch</button>\n</body></html>'
+    )
+    fixture.detectChanges()
+
+    const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement
+    const token = fixture.componentInstance.htmlInspectorToken()
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'xpert-html-inspector-element',
+          token,
+          element: {
+            attributes: [{ name: 'id', value: 'hero' }],
+            documentTitle: 'Preview',
+            domPath: 'html > body > button',
+            label: 'button "Launch"',
+            outerHtml: '<button id="hero">Launch</button>',
+            selector: '#hero',
+            tagName: 'button',
+            text: 'Launch'
+          }
+        },
+        source: iframe.contentWindow
+      })
+    )
+
+    expect(emitted).toEqual([
+      {
+        type: 'file_element',
+        attributes: [{ name: 'id', value: 'hero' }],
+        documentTitle: 'Preview',
+        domPath: 'html > body > button',
+        filePath: 'src/index.html',
+        label: 'button "Launch"',
+        outerHtml: '<button id="hero">Launch</button>',
+        selector: '#hero',
+        sourceEndLine: 3,
+        sourceStartLine: 3,
+        tagName: 'button',
+        text: 'Launch'
+      }
+    ])
+  })
+
+  it('ignores html inspector messages with the wrong token or source frame', () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: jest.fn(() => 'blob:html-preview-ignored')
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: jest.fn()
+    })
+
+    const fixture = TestBed.createComponent(FilePreviewContentComponent)
+    const emitted: unknown[] = []
+    fixture.componentInstance.fileElementReference.subscribe((value) => emitted.push(value))
+    fixture.componentRef.setInput('filePath', 'src/index.html')
+    fixture.componentRef.setInput('previewKind', 'html')
+    fixture.componentRef.setInput('referenceable', true)
+    fixture.componentRef.setInput('content', '<html><body><button id="hero">Launch</button></body></html>')
+    fixture.detectChanges()
+
+    const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement
+    const token = fixture.componentInstance.htmlInspectorToken()
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'xpert-html-inspector-element',
+          token: 'wrong-token',
+          element: {
+            attributes: [{ name: 'id', value: 'hero' }],
+            domPath: 'html > body > button',
+            outerHtml: '<button id="hero">Launch</button>',
+            selector: '#hero',
+            tagName: 'button',
+            text: 'Launch'
+          }
+        },
+        source: iframe.contentWindow
+      })
+    )
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'xpert-html-inspector-element',
+          token,
+          element: {
+            attributes: [{ name: 'id', value: 'hero' }],
+            domPath: 'html > body > button',
+            outerHtml: '<button id="hero">Launch</button>',
+            selector: '#hero',
+            tagName: 'button',
+            text: 'Launch'
+          }
+        },
+        source: window
+      })
+    )
+
+    expect(emitted).toEqual([])
+  })
+
   it('emits selection references from rich document previews', () => {
     const fixture = TestBed.createComponent(FilePreviewContentComponent)
     const emitted: FileEditorSelection[] = []

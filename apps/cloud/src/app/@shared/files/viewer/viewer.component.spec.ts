@@ -101,12 +101,14 @@ jest.mock('../preview/file-preview-content.component', () => {
     @Input() documentHtml?: string | null
     @Input() downloadable?: boolean
     @Input() error?: string | null
+    @Input() filePath?: string | null
     @Input() fileName?: string
     @Input() loading?: boolean
     @Input() referenceable?: boolean
     @Input() spreadsheet?: unknown
     @Input() url?: string | null
     @Output() download = new EventEmitter<void>()
+    @Output() fileElementReference = new EventEmitter()
     @Output() referenceSelection = new EventEmitter()
   }
 
@@ -182,10 +184,28 @@ describe('FileViewerComponent', () => {
     expect(component.previewKind()).toBe('html')
     expect(component.canTogglePreview()).toBe(true)
     expect(component.showEnhancedPreview()).toBe(true)
+    expect(component.htmlPreviewReferenceable()).toBe(false)
 
     component.updatePreviewMode('code')
 
     expect(component.isPreviewMode()).toBe(false)
+  })
+
+  it('enables html element references only for readable html preview mode', () => {
+    const fixture = TestBed.createComponent(FileViewerComponent)
+    fixture.componentRef.setInput('filePath', 'index.html')
+    fixture.componentRef.setInput('content', '<!doctype html><html><body>Preview</body></html>')
+    fixture.componentRef.setInput('readable', true)
+    fixture.componentRef.setInput('referenceable', true)
+    fixture.detectChanges()
+
+    const component = fixture.componentInstance
+    expect(component.htmlPreviewReferenceable()).toBe(true)
+    expect(component.previewContentReferenceable()).toBe(true)
+
+    component.updatePreviewMode('code')
+
+    expect(component.htmlPreviewReferenceable()).toBe(false)
   })
 
   it('enables the inline selection action for markdown files after switching to edit mode', () => {

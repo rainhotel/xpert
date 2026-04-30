@@ -90,13 +90,15 @@
           [documentHtml]="previewData().documentHtml"
           [downloadable]="downloadable()"
           [error]="previewData().error"
+          [filePath]="filePath()"
           [fileName]="displayFileName() || filePath() || ''"
           [loading]="previewLoading()"
           [previewKind]="previewKind()"
-          [referenceable]="documentPreviewReferenceable()"
+          [referenceable]="previewContentReferenceable()"
           [spreadsheet]="previewData().spreadsheet"
           [url]="previewUrl() || file()?.fileUrl || file()?.url || null"
           (download)="download.emit()"
+          (fileElementReference)="referenceElement.emit($event)"
           (referenceSelection)="referenceSelection.emit($event)"
         />
       } @else if (!readable()) {

@@ -113,6 +113,7 @@ jest.mock('../viewer/viewer.component', () => {
     @Output() readonly back = new EventEmitter<void>()
     @Output() readonly download = new EventEmitter<void>()
     @Output() readonly referenceFile = new EventEmitter<void>()
+    @Output() readonly referenceElement = new EventEmitter()
     @Output() readonly referenceSelection = new EventEmitter<FileEditorSelection>()
   }
 
@@ -504,6 +505,36 @@ describe('FileWorkbenchComponent', () => {
         text: 'Executive summary',
         startLine: 1,
         endLine: 1
+      }
+    ])
+  })
+
+  it('forwards html file element references from the viewer', async () => {
+    const { component } = await setup({ referenceable: true })
+    const emitted: unknown[] = []
+    component.referenceRequest.subscribe((value) => emitted.push(value))
+
+    component.referenceFileElement({
+      type: 'file_element',
+      attributes: [{ name: 'id', value: 'hero' }],
+      domPath: 'html > body > button',
+      filePath: 'index.html',
+      outerHtml: '<button id="hero">Launch</button>',
+      selector: '#hero',
+      tagName: 'button',
+      text: 'Launch'
+    })
+
+    expect(emitted).toEqual([
+      {
+        type: 'file_element',
+        attributes: [{ name: 'id', value: 'hero' }],
+        domPath: 'html > body > button',
+        filePath: 'index.html',
+        outerHtml: '<button id="hero">Launch</button>',
+        selector: '#hero',
+        tagName: 'button',
+        text: 'Launch'
       }
     ])
   })
