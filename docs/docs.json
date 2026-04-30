@@ -105,7 +105,7 @@
                 "group": "快速开始",
                 "pages": [
                   "zh-hans/solutions/declarative-extended-view-system",
-                  "zh-hans/solutions/current-user-feature-hydration"
+                  "zh-hans/solutions/user-me-loading-optimization"
                 ]
               }
             ]
