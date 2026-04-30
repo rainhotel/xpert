@@ -557,6 +557,54 @@ describe('ClawXpertConversationDetailComponent', () => {
     expect(focusComposer).toHaveBeenCalled()
   })
 
+  it('appends html file element references to the chatkit composer', async () => {
+    const setComposerValue = jest.fn().mockResolvedValue(undefined)
+    const focusComposer = jest.fn().mockResolvedValue(undefined)
+    runtimeModule.injectHostedAssistantChatkitControl.mockReturnValueOnce(
+      signal({
+        element: {},
+        setThreadId: jest.fn().mockResolvedValue(undefined),
+        setComposerValue,
+        focusComposer
+      })
+    )
+
+    const fixture = TestBed.createComponent(ClawXpertConversationDetailComponent)
+    await settle(fixture)
+
+    const filesPanel = fixture.debugElement.query(By.directive(ClawXpertConversationFilesComponent))
+    expect(filesPanel).not.toBeNull()
+
+    ;(filesPanel.componentInstance as ClawXpertConversationFilesComponent).referenceRequest.emit({
+      type: 'file_element',
+      attributes: [{ name: 'id', value: 'hero' }],
+      domPath: 'html > body > button',
+      filePath: 'index.html',
+      outerHtml: '<button id="hero">Launch</button>',
+      selector: '#hero',
+      tagName: 'button',
+      text: 'Launch'
+    })
+    await settle(fixture)
+
+    expect(setComposerValue).toHaveBeenCalledWith({
+      references: [
+        {
+          type: 'file_element',
+          attributes: [{ name: 'id', value: 'hero' }],
+          domPath: 'html > body > button',
+          filePath: 'index.html',
+          outerHtml: '<button id="hero">Launch</button>',
+          selector: '#hero',
+          tagName: 'button',
+          text: 'Launch'
+        }
+      ],
+      appendReferences: true
+    })
+    expect(focusComposer).toHaveBeenCalled()
+  })
+
   it('appends selected preview element references to the chatkit composer', async () => {
     const setComposerValue = jest.fn().mockResolvedValue(undefined)
     const focusComposer = jest.fn().mockResolvedValue(undefined)

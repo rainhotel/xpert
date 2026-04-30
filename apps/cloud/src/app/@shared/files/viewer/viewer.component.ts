@@ -19,7 +19,7 @@ import { TranslateModule } from '@ngx-translate/core'
 import { ZardSegmentedComponent, ZardSegmentedItemComponent } from '@xpert-ai/headless-ui'
 import { MarkdownModule } from 'ngx-markdown'
 import { firstValueFrom } from 'rxjs'
-import { TFile } from '@xpert-ai/contracts'
+import type { TChatFileElementReference, TFile } from '@xpert-ai/contracts'
 import { FileEditorComponent, FileEditorSelection } from '../editor/editor.component'
 import { FormsModule } from '@angular/forms'
 import { FilePreviewContentComponent } from '../preview/file-preview-content.component'
@@ -120,6 +120,17 @@ export class FileViewerComponent {
   readonly documentPreviewReferenceable = computed(
     () => this.referenceable() && this.previewKind() === 'document' && this.isPreviewMode() && !!this.filePath()
   )
+  readonly htmlPreviewReferenceable = computed(
+    () =>
+      this.referenceable() &&
+      this.readable() &&
+      this.previewKind() === 'html' &&
+      this.isPreviewMode() &&
+      !!this.filePath()
+  )
+  readonly previewContentReferenceable = computed(
+    () => this.documentPreviewReferenceable() || this.htmlPreviewReferenceable()
+  )
   readonly #markdownPreviewSelection = signal<FileViewerPreviewSelection | null>(null)
   readonly markdownPreviewReference = computed(() =>
     this.markdownPreviewReferenceable() ? this.#markdownPreviewSelection() : null
@@ -132,6 +143,7 @@ export class FileViewerComponent {
   readonly back = output<void>()
   readonly download = output<void>()
   readonly referenceFile = output<void>()
+  readonly referenceElement = output<TChatFileElementReference>()
   readonly referenceSelection = output<FileEditorSelection>()
 
   readonly #resetPreviewSelectionEffect = effect(() => {

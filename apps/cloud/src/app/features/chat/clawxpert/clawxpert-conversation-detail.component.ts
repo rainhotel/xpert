@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, computed, effect, inject, OnDestroy, signal } from '@angular/core'
 import { TranslateModule } from '@ngx-translate/core'
 import { ChatKit } from '@xpert-ai/chatkit-angular'
-import { TChatElementReference } from '@xpert-ai/contracts'
+import type { TChatElementReference, TChatFileElementReference } from '@xpert-ai/contracts'
 import { ZardButtonComponent, ZardIconComponent, ZardTabsImports } from '@xpert-ai/headless-ui'
 import { firstValueFrom } from 'rxjs'
 import { ChatComputerTimelineComponent } from '../../../@shared/chat/computer-timeline/computer-timeline.component'
@@ -35,7 +35,7 @@ type ChatKitCodeComposerReference = {
   language?: string
 }
 
-type ChatKitComposerReference = ChatKitCodeComposerReference | TChatElementReference
+type ChatKitComposerReference = ChatKitCodeComposerReference | TChatElementReference | TChatFileElementReference
 type ClawXpertConversationPanel = 'files' | 'computer' | 'preview' | 'terminal'
 
 type ChatKitReferenceComposerControl = {
@@ -491,6 +491,11 @@ export class ClawXpertConversationDetailComponent implements OnDestroy {
   }
 
   async handleWorkspaceReference(request: FileWorkbenchReferenceRequest) {
+    if (isFileElementReferenceRequest(request)) {
+      await this.attachComposerReferences([request])
+      return
+    }
+
     await this.attachComposerReferences([
       {
         type: 'code',
@@ -686,4 +691,10 @@ export class ClawXpertConversationDetailComponent implements OnDestroy {
 function resolveConversationId(metadata?: { id?: string }) {
   const conversationId = metadata?.id
   return typeof conversationId === 'string' && conversationId.trim() ? conversationId : null
+}
+
+function isFileElementReferenceRequest(
+  request: FileWorkbenchReferenceRequest
+): request is TChatFileElementReference {
+  return 'type' in request && request.type === 'file_element'
 }

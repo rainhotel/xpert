@@ -48,12 +48,30 @@
       }
       @case ('html') {
         @if (htmlPreviewUrl(); as previewUrl) {
-          <iframe
-            [src]="previewUrl | safe: 'resourceUrl'"
-            sandbox="allow-downloads allow-forms allow-modals allow-popups allow-scripts"
-            referrerpolicy="no-referrer"
-            class="h-full w-full border-none bg-components-panel-bg"
-          ></iframe>
+          <div class="flex h-full min-h-0 flex-col">
+            @if (htmlInspectAvailable()) {
+              <div class="flex items-center justify-end border-b border-divider-regular px-3 py-2">
+                <button
+                  type="button"
+                  data-html-inspect-button="true"
+                  [class]="htmlInspectMode() ? 'btn btn-primary btn-small' : 'btn btn-secondary btn-small'"
+                  (click)="toggleHtmlInspectMode()"
+                >
+                  <i class="ri-focus-3-line mr-1"></i>
+                  {{ 'PAC.Chat.ClawXpert.Inspect' | translate: { Default: 'Inspect' } }}
+                </button>
+              </div>
+            }
+
+            <iframe
+              #htmlPreviewFrame
+              [src]="previewUrl | safe: 'resourceUrl'"
+              sandbox="allow-downloads allow-forms allow-modals allow-popups allow-scripts"
+              referrerpolicy="no-referrer"
+              class="min-h-0 flex-1 border-none bg-components-panel-bg"
+              (load)="handleHtmlPreviewLoad()"
+            ></iframe>
+          </div>
         }
       }
       @case ('document') {

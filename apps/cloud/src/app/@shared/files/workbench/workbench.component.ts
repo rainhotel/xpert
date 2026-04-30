@@ -19,6 +19,7 @@ import {
 import { injectConfirmDelete } from '@xpert-ai/ocap-angular/common'
 import { TranslateModule, TranslateService } from '@ngx-translate/core'
 import { Observable, defaultIfEmpty, finalize, firstValueFrom, from, isObservable } from 'rxjs'
+import type { TChatFileElementReference } from '@xpert-ai/contracts'
 import { getErrorMessage, injectToastr, TFile, TFileDirectory } from '../../../@core'
 import { FileEditorSelection, mapFileLanguageFromPath } from '../editor/editor.component'
 import { FileTreeComponent, type FileTreeUploadKind } from '../tree/tree.component'
@@ -51,13 +52,14 @@ export type FileWorkbenchDownloadPayload =
   | { kind: 'url'; url: string; fileName?: string }
   | { kind: 'blob'; blob: Blob; fileName?: string }
 export type FileWorkbenchFileDownloader = (path: string) => AsyncValue<FileWorkbenchDownloadPayload | null | undefined>
-export type FileWorkbenchReferenceRequest = {
+export type FileWorkbenchCodeReferenceRequest = {
   path: string
   text: string
   startLine: number
   endLine: number
   language?: string
 }
+export type FileWorkbenchReferenceRequest = FileWorkbenchCodeReferenceRequest | TChatFileElementReference
 
 type FileWorkbenchPreviewResource = {
   objectUrl: string | null
@@ -301,6 +303,14 @@ export class FileWorkbenchComponent {
     }
 
     this.referenceRequest.emit(createReferenceRequest(filePath, text, selection.startLine, selection.endLine))
+  }
+
+  referenceFileElement(reference: TChatFileElementReference) {
+    if (!this.referenceable()) {
+      return
+    }
+
+    this.referenceRequest.emit(reference)
   }
 
   discardActiveFileChanges() {
