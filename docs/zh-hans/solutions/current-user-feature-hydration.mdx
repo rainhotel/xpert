@@ -1,0 +1,302 @@
+---
+title: "PR #566：/user/me Feature Hydration 优化方案"
+description: "记录 PR #566 中 /user/me 请求拆分、ClawXpert feature 守卫、组织上下文刷新和后端 feature context cache 的方案。"
+---
+
+# 1. PR 背景
+
+PR #566 解决的是 `/user/me` 返回数据过重、ClawXpert feature 状态不一致，以及组织管理页 mutation 后前端用户上下文过期的问题。
+
+核心目标是：
+
+* 启动阶段只加载必要 current user 数据
+* 将 feature 相关上下文拆到独立 hydration 流程
+* ClawXpert 直访和默认跳转都受 feature 状态约束
+* 组织新增、删除、更新后，`store.user.organizations` 立即反映最新状态
+* 后端只缓存 feature-specific context，不缓存完整 current user shape
+
+---
+
+# 2. 变更范围
+
+PR #566 的主要改动分布在四块：
+
+* 前端启动：`AppInitService` 改为 bootstrap relations + 后台 feature hydration
+* 前端状态：新增 `CurrentUserHydrationService`，集中处理 feature hydration、session cache、in-flight 和 store merge
+* 前端路由：`/chat` 默认入口和 ClawXpert 子路由统一等待 feature hydration，保留 3 秒 fallback
+* 后端接口：`UserService.findCurrentUser` 对 feature hydration relations 走轻量 feature context 查询和 cache
+
+相关测试覆盖：
+
+* `current-user-hydration.service.spec.ts`
+* `routes.spec.ts`
+* `home.component.spec.ts`
+* `user.service.spec.ts`
+* `feature-organization.service.spec.ts`
+
+---
+
+# 3. 解决的问题
+
+## 3.1 `/user/me` 首屏请求过重
+
+原来应用启动时会把完整 current user relations 一次性拉回，包括 tenant feature、organization feature、role、employee、organizations 等数据。
+
+PR #566 将 current user 请求拆成两层：
+
+* bootstrap `/user/me`：启动必需数据
+* feature hydration `/user/me`：feature gate 和 feature UI 所需数据
+
+这样保留原有初始化行为，同时避免启动阶段被 feature 关系拖慢。
+
+## 3.2 ClawXpert 入口关闭后仍可直访
+
+仅隐藏侧边栏入口不够，用户仍可以直接访问：
+
+```text
+/chat/clawxpert/c
+```
+
+PR #566 在路由层补上 feature gate，并在 `ChatHomeComponent` 中补上 hydration 完成后的主动跳转，避免 active route 在 feature 被关闭后继续停留在 ClawXpert 页面。
+
+## 3.3 mutation 后复用旧 hydration 结果
+
+普通 hydration 请求在飞时，如果 mutation 成功后再触发强制刷新，不能复用 mutation 前发出的旧请求。
+
+PR #566 给 `force: true` 增加“必须拿最新”的语义：
+
+* force 请求不复用已有 in-flight
+* 同一个 hydration key 使用 request token 记录最新请求
+* 旧请求返回后不能覆盖新请求写入的 store
+
+## 3.4 同一用户切换 tenant 后状态串用
+
+feature hydration 的 cache key 和 in-flight key 必须同时区分 `userId` 和 `tenantId`。
+
+PR #566 将 tenant 纳入：
+
+* session cache key
+* in-flight key
+* server hydrated key
+* context change cleanup 判断
+
+这样同一个用户切换 tenant 时，不会复用上一个 tenant 的 feature 状态。
+
+---
+
+# 4. 前端方案
+
+## 4.1 启动阶段只加载 bootstrap relations
+
+`AppInitService` 启动时请求：
+
+```ts
+usersService.getMe([...CURRENT_USER_BOOTSTRAP_RELATIONS])
+```
+
+这次请求仍然负责原有关键初始化：
+
+* `store.user`
+* active scope
+* selected organization
+* role permissions
+* preferred language
+* Sentry user
+
+如果 bootstrap user 已经携带 feature 数据，则直接标记 hydration 完成。
+
+如果没有 feature 数据，则只把 hydration 标记为 loading，并在后台调用：
+
+```ts
+currentUserHydrationService.getFeatureHydration()
+```
+
+启动流程不等待后台 feature hydration 完成。
+
+## 4.2 Feature hydration service 集中处理状态
+
+`CurrentUserHydrationService` 负责：
+
+* 请求 `CURRENT_USER_FEATURE_RELATIONS`
+* 合并 feature hydration user 到当前 `store.user`
+* 更新 `store.featureTenant`
+* 更新 `store.featureOrganizations`
+* 收敛 `featureContextHydrated`
+* 收敛 `featureContextHydrationLoading`
+* 收敛 `featureContextHydrationFailed`
+* 管理 session cache、in-flight 和 server hydrated 标记
+
+成功应用 hydration 后统一设置：
+
+```ts
+featureContextHydrated = true
+featureContextHydrationLoading = false
+featureContextHydrationFailed = false
+```
+
+因此 session cache 命中、后台请求成功、前台守卫请求成功都会走同一套状态收敛。
+
+## 4.3 保留 3 秒 fallback
+
+`routes.ts` 中保留 3 秒超时：
+
+```ts
+const FEATURE_HYDRATION_TIMEOUT_MS = 3000
+```
+
+路由守卫和 `/chat` 默认跳转都通过 `hydrateFeatureContext()` 等待：
+
+* feature hydration 成功：读取最新 `store.hasFeatureEnabled`
+* feature hydration 失败：按 disabled 处理
+* feature hydration 超时：按 disabled 处理
+
+PR #566 采用安全优先策略：
+
+* `/chat` 默认入口失败或超时时跳到 `/chat/x/common`
+* 直访 ClawXpert 失败或超时时跳回 `/chat`
+
+## 4.4 避免 route guard 重复触发
+
+ClawXpert 路由只保留 child guard：
+
+```ts
+canActivateChild: [featureGate([...])]
+```
+
+这样既覆盖 `/chat/clawxpert`，也覆盖 `/chat/clawxpert/c`，同时避免 parent `canActivate` 和 child guard 在首进页面时重复触发 hydration。
+
+---
+
+# 5. 组织上下文刷新
+
+组织管理页 mutation 后不能只做 feature hydration。
+
+PR #566 在 `OrganizationsComponent.refreshCurrentUserContext` 中恢复完整 current user refresh：
+
+```ts
+usersService.getMe([...CURRENT_USER_FULL_RELATIONS])
+```
+
+刷新后同步：
+
+* `store.user`
+* `store.featureTenant`
+* `store.selectedOrganization`
+* `store.featureOrganizations`
+* 当前组件内的 `selectedOrganization`
+* 当前组件表单数据
+
+当当前选中的组织被删除或用户不再属于该组织时，选择顺序为：
+
+1. 默认组织
+2. 第一个可用组织
+3. 没有组织则清空选择和 feature 列表
+
+这保证新增、删除、默认组织切换、组织基础信息修改后，组织列表和当前用户上下文都立即一致。
+
+---
+
+# 6. 后端方案
+
+## 6.1 识别 feature hydration 请求
+
+`UserService.findCurrentUser` 会判断 relations 是否属于已知 feature hydration shape。
+
+如果是 feature hydration 请求，并且可以使用 `FeatureOrganizationRepository`，则走：
+
+```ts
+findCurrentUserFeatureContext()
+```
+
+否则保持原来的 `findOne(id, { relations })` 行为。
+
+## 6.2 不缓存完整 current user
+
+后端 cache 只保存 feature-specific context：
+
+```ts
+type CurrentUserFeatureContext = {
+  tenantFeatureOrganizations: IFeatureOrganization[]
+  organizationFeatureOrganizations: IFeatureOrganization[]
+}
+```
+
+每次请求仍然重新查询 current user core/bootstrap 数据，再把缓存的 feature context attach 回 user。
+
+这样不会把这些字段缓存 180 秒：
+
+* employee
+* role
+* role permissions
+* tenant 基础字段
+* organization 基础字段
+* user 基础字段
+
+因此组织名、权限、员工信息等变更不会被 feature cache 卡住。
+
+## 6.3 Cache key 和失效
+
+后端 cache 不是简单的“一个 user 一个缓存”。
+
+feature context 数据缓存 key 包含：
+
+* tenantId
+* userId
+* relations hash
+* tenant/user feature cache version
+
+Redis/cache-manager 中实际有三类 key，统一前缀是：
+
+```text
+user:me:feature-context
+```
+
+真正保存 feature context payload 的 key：
+
+```text
+user:me:feature-context:v1:{tenantId}:{userId}:{relationsHash}:{version}
+```
+
+其中 `version` 由 tenant version 和 user version 拼成：
+
+```text
+{tenantVersion}.{userVersion}
+```
+
+用于失效的 version key：
+
+```text
+user:me:feature-context:tenant-version:{tenantId}
+user:me:feature-context:user-version:{tenantId}:{userId}
+```
+
+示例：
+
+```text
+user:me:feature-context:v1:tenant-1:user-1:abc123def4567890:1714460000000.1714460000123
+user:me:feature-context:tenant-version:tenant-1
+user:me:feature-context:user-version:tenant-1:user-1
+```
+
+feature 变更后触发 tenant cache version 更新。
+
+user organization create/update/delete 后触发 user cache version 更新。
+
+这让 feature hydration 可以复用短期 feature context，同时 mutation 后能拿到最新 feature 状态。
+
+---
+
+# 7. 验收点
+
+PR #566 的行为验收集中在以下场景：
+
+* ClawXpert feature 关闭后，直访 `/chat/clawxpert/c` 会被挡回
+* `/chat` 默认入口在 hydration 失败或超时时进入 `/chat/x/common`
+* 首进 ClawXpert 时不会因为 parent guard 和 child guard 重复触发额外 `/user/me`
+* pending normal hydration 后再发 `force: true`，force 请求不会复用旧 in-flight
+* 同一用户切换 tenant 后，不复用旧 tenant 的 in-flight 或 server hydrated 状态
+* session cache 命中后，loading/failed/hydrated 状态会收敛
+* selected organization 已删除或不在 membership 中时，不保留旧 featureOrganizations
+* 新增、删除、更新组织后，`store.user.organizations` 和页面选中组织立即刷新
+* 修改 organization、role permissions、employee 后，feature cache 不返回旧的完整 user shape
+* feature toggle 变更后，feature hydration 能通过 cache version 拿到最新状态
