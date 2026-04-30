@@ -235,6 +235,7 @@ export class XpertTemplateService extends TenantAwareCrudService<XpertTemplate> 
 	private readonly cacheManager: Cache
 
 	private templateDirectoryReady?: Promise<string>
+	private unsafeTemplateDirectoryWarningIssued = false
 
 	constructor(
 		@InjectRepository(XpertTemplate)
@@ -820,7 +821,47 @@ export class XpertTemplateService extends TenantAwareCrudService<XpertTemplate> 
 
 	private getExternalTemplateRoot() {
 		const configuredPath = this.configService.environment.env?.XPERT_TEMPLATE_DIR?.trim()
-		return configuredPath || path.join(this.configService.assetOptions.dataPath, templateDirectoryName)
+		const defaultRoot = this.getDefaultExternalTemplateRoot()
+		if (!configuredPath) {
+			return defaultRoot
+		}
+
+		const resolvedPath = this.resolveTemplateRootPath(configuredPath)
+		if (this.isBuiltinTemplatePath(resolvedPath)) {
+			this.warnUnsafeTemplateRoot(configuredPath, defaultRoot)
+			return defaultRoot
+		}
+
+		return resolvedPath
+	}
+
+	private getDefaultExternalTemplateRoot() {
+		return path.join(this.configService.assetOptions.dataPath, templateDirectoryName)
+	}
+
+	private resolveTemplateRootPath(templateRoot: string) {
+		return path.resolve(
+			path.isAbsolute(templateRoot)
+				? templateRoot
+				: path.join(this.configService.assetOptions.serverRoot, templateRoot)
+		)
+	}
+
+	private isBuiltinTemplatePath(templateRoot: string) {
+		const builtinRoot = path.resolve(this.getBuiltinTemplateRoot())
+		const relativePath = path.relative(builtinRoot, templateRoot)
+		return !relativePath || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+	}
+
+	private warnUnsafeTemplateRoot(configuredPath: string, fallbackRoot: string) {
+		if (this.unsafeTemplateDirectoryWarningIssued) {
+			return
+		}
+
+		this.unsafeTemplateDirectoryWarningIssued = true
+		this.#logger.warn(
+			`Ignoring XPERT_TEMPLATE_DIR '${configuredPath}' because it points inside the built-in xpert template source. Using '${fallbackRoot}' instead.`
+		)
 	}
 
 	private async getExternalTemplatePath(...segments: string[]) {

@@ -75,6 +75,35 @@ describe('XpertTemplateService', () => {
 		expect((service as any).getExternalTemplateRoot()).toBe('/tmp/custom-xpert-template')
 	})
 
+	it('resolves relative XPERT_TEMPLATE_DIR from the server root', () => {
+		const workspaceRoot = createTempDir()
+		const { service } = createService({
+			serverRoot: workspaceRoot,
+			dataPath: '/var/lib/xpert/data/',
+			env: {
+				XPERT_TEMPLATE_DIR: './runtime/xpert-template'
+			}
+		})
+
+		expect((service as any).getExternalTemplateRoot()).toBe(join(workspaceRoot, 'runtime', 'xpert-template'))
+	})
+
+	it('falls back to the data template directory when XPERT_TEMPLATE_DIR points at built-in templates', () => {
+		const workspaceRoot = createTempDir()
+		const dataRoot = createTempDir()
+		const loggerSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+		const { service } = createService({
+			serverRoot: workspaceRoot,
+			dataPath: dataRoot,
+			env: {
+				XPERT_TEMPLATE_DIR: './packages/server-ai/src/xpert-template'
+			}
+		})
+
+		expect((service as any).getExternalTemplateRoot()).toBe(join(dataRoot, 'xpert-template'))
+		expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Ignoring XPERT_TEMPLATE_DIR'))
+	})
+
 	it('initializes the external template directory without overwriting existing files', async () => {
 		const workspaceRoot = createTempDir()
 		const dataRoot = createTempDir()
