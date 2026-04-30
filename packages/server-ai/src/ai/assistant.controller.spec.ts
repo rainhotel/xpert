@@ -79,6 +79,11 @@ describe('AssistantsController', () => {
                     },
                     description: {
                         en_US: `${provider} description`
+                    },
+                    icon: {
+                        type: 'svg',
+                        value: `<svg viewBox="0 0 16 16"><path d="M2 2h12v12H2z" /></svg>`,
+                        color: '#00d2e6'
                     }
                 }
             }))
@@ -90,6 +95,13 @@ describe('AssistantsController', () => {
                         id: 'skill-default',
                         workspaceId: 'workspace-1',
                         name: 'Default Skill',
+                        metadata: {
+                            icon: {
+                                type: 'svg',
+                                value: `<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" /></svg>`,
+                                alt: 'Default Skill'
+                            }
+                        },
                         skillIndex: {
                             name: 'Default Skill',
                             description: 'Loaded by default',
@@ -150,6 +162,13 @@ describe('AssistantsController', () => {
                     description: 'Loaded by default',
                     repositoryName: 'Explicit repo',
                     provider: 'github',
+                    meta: {
+                        icon: {
+                            type: 'svg',
+                            value: `<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" /></svg>`,
+                            alt: 'Default Skill'
+                        }
+                    },
                     default: true
                 },
                 {
@@ -176,6 +195,13 @@ describe('AssistantsController', () => {
                     provider: 'provider-b',
                     label: 'Provider B',
                     description: 'provider-b description',
+                    meta: {
+                        icon: {
+                            type: 'svg',
+                            value: `<svg viewBox="0 0 16 16"><path d="M2 2h12v12H2z" /></svg>`,
+                            color: '#00d2e6'
+                        }
+                    },
                     toolNames: ['visible']
                 }
             ]

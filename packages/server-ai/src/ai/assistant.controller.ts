@@ -98,11 +98,18 @@ export class AssistantsController {
 
                 const strategy = tryGetMiddlewareStrategy(this.agentMiddlewareRegistry, provider)
                 const meta = strategy?.meta
+                const runtimeMeta = omitBy(
+                    {
+                        icon: meta?.icon
+                    },
+                    isNil
+                )
                 return {
                     nodeKey: node.key,
                     provider,
                     label: resolveI18nText(meta?.label, provider),
                     description: resolveI18nText(meta?.description),
+                    ...(Object.keys(runtimeMeta).length ? { meta: runtimeMeta } : {}),
                     toolNames: Object.entries(entity?.tools ?? {})
                         .filter(([, enabled]) => enabled !== false)
                         .map(([name]) => name)
@@ -134,6 +141,12 @@ export class AssistantsController {
         return (result.items ?? []).map((skill) => {
             const skillIndex = skill.skillIndex
             const repositoryId = skillIndex?.repositoryId ?? skillIndex?.repository?.id
+            const runtimeMeta = omitBy(
+                {
+                    icon: skill.metadata?.icon
+                },
+                isNil
+            )
             const isDefault =
                 defaultSelection.skillIds.has(skill.id) ||
                 defaultSelection.repositoryDefaults.some(
@@ -149,6 +162,7 @@ export class AssistantsController {
                 description: skillIndex?.description,
                 repositoryName: skillIndex?.repository?.name,
                 provider: skillIndex?.repository?.provider,
+                ...(Object.keys(runtimeMeta).length ? { meta: runtimeMeta } : {}),
                 ...(isDefault ? { default: true } : {})
             }
         })
