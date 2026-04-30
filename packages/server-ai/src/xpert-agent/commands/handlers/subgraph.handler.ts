@@ -32,7 +32,6 @@ import {
     ChatMessageEventTypeEnum,
     ChatMessageTypeEnum,
     findStartNodes,
-    getAgentMiddlewareNodes,
     getCurrentGraph,
     getWorkflowTriggers,
     GRAPH_NODE_SUMMARIZE_CONVERSATION,
@@ -115,7 +114,7 @@ import {
     hasMultipleInputs,
     filterDisabledTools,
     getAgentMiddlewares,
-    orderNodesByKeyOrder,
+    getRuntimeEnabledMiddlewareNodes,
     createAgentChannel,
     createPlanModeMiddlewareEntries
 } from '../../../shared'
@@ -686,10 +685,9 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
             map.set(item.tool.name, item.tool)
             return map
         }, new Map())
-        const visibleMiddlewareNodes = orderNodesByKeyOrder(
-            getAgentMiddlewareNodes(graph, agent.key),
-            agent.options?.middlewares?.order || []
-        )
+        const visibleMiddlewareNodes = getRuntimeEnabledMiddlewareNodes(graph, agent, {
+            runtimeCapabilities: options.runtimeCapabilities
+        })
         const middlewareContext: Omit<IAgentMiddlewareContext, 'node'> = {
             tenantId: xpert.tenantId,
             userId: RequestContext.currentUserId(),
@@ -709,7 +707,8 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
             this.agentMiddlewareRegistry,
             middlewareContext,
             {
-                toolPreferences: options.toolPreferences
+                toolPreferences: options.toolPreferences,
+                runtimeCapabilities: options.runtimeCapabilities
             }
         )
         const runtimeMiddlewareEntries = await createPlanModeMiddlewareEntries(

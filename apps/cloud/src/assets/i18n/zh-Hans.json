@@ -3798,6 +3798,8 @@
       "AgentMiddlewaresTooltip": "智能体按顺序加载中间件。中间件可以做：通过日志记录、分析和调试跟踪代理行为。转换提示、工具选择和输出格式。添加重试、回退和提前终止逻辑。应用速率限制、防护措施和个人身份信息检测。",
       "NoMiddlewares": "还没有添加中间件",
       "MiddlewareNotFound": "未找到中间件‘{{provider}}’",
+      "SystemMiddleware": "系统中间件",
+      "SystemMiddlewareTooltip": "运行时始终加载此中间件，并在面向用户的技能/插件选择中隐藏。",
       "NoKnowledgeBasesYet": "还没有添加知识库",
       "NoToolsetsYet": "还没有添加工具集",
       "ExportXpertDSL": "导出数字专家 DSL",

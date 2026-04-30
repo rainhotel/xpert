@@ -46,6 +46,10 @@ import { getWorkspaceRoot } from '../../../xpert-workspace'
 import { XpertWorkspace } from '../../../xpert-workspace/workspace.entity'
 
 export interface ISkillsMiddlewareOptions {
+	/**
+	 * Skill package IDs that are loaded by default when the caller does not provide
+	 * an explicit runtime skill allow-list.
+	 */
 	skills?: string[]
 	systemPrompt?: string
 	repositoryDefault?: {
@@ -65,11 +69,9 @@ export interface ISkillsMiddlewareOptions {
  * - `skillSelectionMode`: Optional explicit runtime override for how workspace skills are resolved.
  *
  * Merge behavior with config:
- * - `options.skills` are always loaded for the current context workspace.
- * - Runtime `selectedSkillIds` are additionally loaded for the effective workspace
- *   (`selectedSkillWorkspaceId` after access check / fallback).
- * - When `selectedSkillWorkspaceId` is present and runtime `selectedSkillIds` are absent, the
- *   middleware loads the full effective workspace skill set and filters it with `disabledSkillIds`.
+ * - `options.skills` are the default skills for the current context workspace.
+ * - Runtime `selectedSkillIds` are an explicit allow-list for the effective workspace
+ *   (`selectedSkillWorkspaceId` after access check / fallback), replacing configured defaults.
  * - When `skillSelectionMode` is `workspace_blacklist`, the middleware ignores configured and
  *   runtime-selected skill IDs, loads the full effective workspace skill set, and filters it with
  *   `disabledSkillIds`.
@@ -202,6 +204,25 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 		configSchema: {
 			type: 'object',
 			properties: {
+				skills: {
+					type: 'array',
+					title: {
+						en_US: 'Default Skills',
+						zh_Hans: '默认技能'
+					},
+					description: {
+						en_US: 'Skills loaded by default. Users can turn them off from ChatKit runtime selection.',
+						zh_Hans: '默认加载的技能。用户可以在 ChatKit 运行时选择中取消勾选。'
+					},
+					default: [],
+					items: {
+						type: 'string'
+					},
+					'x-ui': {
+						component: 'skills-select',
+						span: 2
+					}
+				},
 				systemPrompt: {
 					type: 'string',
 					title: {
@@ -551,17 +572,23 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 					normalizedContextWorkspaceId,
 					stateWorkspaceId
 				)
+				const shouldUseConfiguredDefaults =
+					runtimeSkillSelectionMode !== 'workspace_blacklist' && !hasRuntimeSelection
 
 				const workspaceSkillSelections = new Map<string, Set<string>>()
-				if (runtimeSkillSelectionMode !== 'workspace_blacklist') {
+				if (shouldUseConfiguredDefaults) {
 					this.appendWorkspaceSkills(
 						workspaceSkillSelections,
 						normalizedContextWorkspaceId,
 						configuredSkillIds
 					)
-					if (hasRuntimeSelection && runtimeSkillIds.length > 0) {
-						this.appendWorkspaceSkills(workspaceSkillSelections, runtimeWorkspaceId, runtimeSkillIds)
-					}
+				}
+				if (
+					runtimeSkillSelectionMode !== 'workspace_blacklist' &&
+					hasRuntimeSelection &&
+					runtimeSkillIds.length > 0
+				) {
+					this.appendWorkspaceSkills(workspaceSkillSelections, runtimeWorkspaceId, runtimeSkillIds)
 				}
 
 				const skills: SkillPromptMetadata[] = []
@@ -571,7 +598,7 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 						runtimeWorkspaceId
 					)
 					skills.push(...workspaceSkills)
-				} else if (configuredRepositoryDefault) {
+				} else if (shouldUseConfiguredDefaults && configuredRepositoryDefault) {
 					const workspaceSkills = await this.loadRepositoryWorkspaceSkillMetadata(
 						runtimeSkillsRootInContainer,
 						normalizedContextWorkspaceId,
@@ -580,18 +607,6 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 					skills.push(
 						...this.filterSkillMetadata(workspaceSkills, configuredRepositoryDefault.disabledSkillIds)
 					)
-				}
-				if (
-					!configuredRepositoryDefault &&
-					!hasRuntimeSelection &&
-					stateWorkspaceId &&
-					configuredSkillIds.length === 0
-				) {
-					const workspaceSkills = await this.loadWorkspaceSkillMetadata(
-						runtimeSkillsRootInContainer,
-						runtimeWorkspaceId
-					)
-					skills.push(...workspaceSkills)
 				}
 				for (const [workspaceId, ids] of workspaceSkillSelections.entries()) {
 					const workspaceSkills = await this.loadSkillMetadata(

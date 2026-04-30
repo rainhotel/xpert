@@ -68,7 +68,8 @@ describe('SkillsMiddleware', () => {
         workspaceId: 'workspace-1',
         projectId: null,
         node: {} as any,
-        tools: new Map()
+        tools: new Map(),
+        runtime: {} as any
       }
     )
 
@@ -121,7 +122,8 @@ describe('SkillsMiddleware', () => {
         workspaceId: 'workspace-1',
         projectId: null,
         node: {} as any,
-        tools: new Map()
+        tools: new Map(),
+        runtime: {} as any
       }
     )
 
@@ -146,6 +148,113 @@ describe('SkillsMiddleware', () => {
     )
 
     expect(loadSkillMetadata).toHaveBeenCalledWith(runtimeSkillsRoot, ['skill-a', 'skill-b'], 'workspace-1')
+  })
+
+  it('uses runtime-selected skills instead of configured default skills when an allow-list is present', async () => {
+    const middleware = createMiddleware()
+    const loadSkillMetadata = jest.spyOn(middleware as any, 'loadSkillMetadata').mockImplementation(
+      async (_workspaceRoot: string, skillIds: string[], workspaceId: string) =>
+        skillIds.map((skillId) => ({
+          id: skillId,
+          name: skillId,
+          description: `${skillId} description`,
+          path: `${runtimeSkillsRoot}/${skillId}/SKILL.md`,
+          packagePath: null,
+          workspaceId,
+          version: '1'
+        }))
+    )
+
+    const instance = await middleware.createMiddleware(
+      {
+        skills: ['default-skill']
+      },
+      {
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        projectId: null,
+        node: {} as any,
+        tools: new Map(),
+        runtime: {} as any
+      }
+    )
+
+    const handler = jest.fn(async (request) => request)
+    const result = (await instance.wrapModelCall(
+      {
+        runtime: {
+          configurable: {
+            sandbox: {
+              workingDirectory: runtimeWorkingDirectory
+            }
+          }
+        },
+        state: {
+          selectedSkillIds: ['runtime-skill'],
+          selectedSkillWorkspaceId: 'workspace-1'
+        },
+        systemMessage: new SystemMessage('base')
+      } as any,
+      handler
+    )) as any
+
+    expect(loadSkillMetadata).toHaveBeenCalledTimes(1)
+    expect(loadSkillMetadata).toHaveBeenCalledWith(runtimeSkillsRoot, ['runtime-skill'], 'workspace-1')
+    expect(result.systemMessage.content).toContain('runtime-skill')
+    expect(result.systemMessage.content).not.toContain('default-skill')
+  })
+
+  it('does not load workspace skills by default when no default skills are configured', async () => {
+    const middleware = createMiddleware()
+    ;(middleware as any).skillPackageRepository.find = jest.fn().mockResolvedValue([
+      {
+        id: 'skill-a',
+        workspaceId: 'workspace-1',
+        packagePath: 'skill-a',
+        metadata: {
+          name: 'skill-a',
+          skillPath: 'skill-a',
+          skillMdPath: `${runtimeSkillsRoot}/skill-a/SKILL.md`
+        }
+      }
+    ])
+
+    const instance = await middleware.createMiddleware(
+      {
+        skills: []
+      },
+      {
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        projectId: null,
+        node: {} as any,
+        tools: new Map(),
+        runtime: {} as any
+      }
+    )
+
+    const handler = jest.fn(async (request) => request)
+    const result = (await instance.wrapModelCall(
+      {
+        runtime: {
+          configurable: {
+            sandbox: {
+              workingDirectory: runtimeWorkingDirectory
+            }
+          }
+        },
+        state: {
+          selectedSkillWorkspaceId: 'workspace-1'
+        },
+        systemMessage: new SystemMessage('base')
+      } as any,
+      handler
+    )) as any
+
+    expect((middleware as any).skillPackageRepository.find).not.toHaveBeenCalled()
+    expect(result.systemMessage.content).not.toContain('skill-a')
   })
 
   it('loads all workspace skills in blacklist mode when selectedSkillIds are absent', async () => {
@@ -192,7 +301,8 @@ describe('SkillsMiddleware', () => {
         workspaceId: 'workspace-1',
         projectId: null,
         node: {} as any,
-        tools: new Map()
+        tools: new Map(),
+        runtime: {} as any
       }
     )
 
@@ -208,7 +318,8 @@ describe('SkillsMiddleware', () => {
         },
         state: {
           disabledSkillIds: ['skill-b'],
-          selectedSkillWorkspaceId: 'workspace-1'
+          selectedSkillWorkspaceId: 'workspace-1',
+          skillSelectionMode: 'workspace_blacklist'
         },
         systemMessage: new SystemMessage('base')
       } as any,
@@ -289,7 +400,8 @@ describe('SkillsMiddleware', () => {
         workspaceId: 'workspace-1',
         projectId: null,
         node: {} as any,
-        tools: new Map()
+        tools: new Map(),
+        runtime: {} as any
       }
     )
 
@@ -409,7 +521,8 @@ describe('SkillsMiddleware', () => {
         workspaceId: 'workspace-1',
         projectId: null,
         node: {} as any,
-        tools: new Map()
+        tools: new Map(),
+        runtime: {} as any
       }
     )
 
@@ -468,7 +581,8 @@ describe('SkillsMiddleware', () => {
         workspaceId: 'workspace-1',
         projectId: null,
         node: {} as any,
-        tools: new Map()
+        tools: new Map(),
+        runtime: {} as any
       }
     )
 
