@@ -23,7 +23,7 @@ Example structure:
 */
 import { SystemMessage } from '@langchain/core/messages'
 import { tool } from '@langchain/core/tools'
-import { TAgentMiddlewareMeta } from '@xpert-ai/contracts'
+import { ISkillRepositoryIndex, TAgentMiddlewareMeta } from '@xpert-ai/contracts'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
 import { InjectRepository } from '@nestjs/typeorm'
@@ -40,8 +40,10 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import { In, Repository } from 'typeorm'
 import { z } from 'zod/v3'
 import { SkillPackage } from '../../skill-package.entity'
+import { SkillPackageService } from '../../skill-package.service'
 import { SKILLS_MIDDLEWARE_NAME } from '../../types'
 import { SandboxAcquireBackendCommand, SandboxCopyFileCommand } from '../../../sandbox'
+import { SkillRepositoryIndexService } from '../../../skill-repository/repository-index/skill-repository-index.service'
 import { getWorkspaceRoot } from '../../../xpert-workspace'
 import { XpertWorkspace } from '../../../xpert-workspace/workspace.entity'
 
@@ -55,6 +57,12 @@ export interface ISkillsMiddlewareOptions {
 	repositoryDefault?: {
 		repositoryId: string
 		disabledSkillIds: string[]
+	}
+	autoDiscovery?: {
+		enabled?: boolean
+		repositoryIds?: string[]
+		searchLimit?: number
+		maxInstallPerRun?: number
 	}
 }
 
@@ -90,6 +98,13 @@ type ConfigRepositoryDefaultSelection = {
 	disabledSkillIds: string[]
 }
 
+type ConfigAutoDiscoveryOptions = {
+	enabled: boolean
+	repositoryIds: string[]
+	searchLimit: number
+	maxInstallPerRun: number
+}
+
 type SkillPromptMetadata = {
 	id: string
 	name: string
@@ -113,6 +128,20 @@ const RUNTIME_SKILLS_DIRECTORY = '.xpert/skills'
 const SKILL_FILE_NAME = 'SKILL.md'
 const MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024
 const START_STATE_KEY = '__start__'
+const DEFAULT_AUTO_DISCOVERY_SEARCH_LIMIT = 5
+const MAX_AUTO_DISCOVERY_SEARCH_LIMIT = 20
+const DEFAULT_AUTO_DISCOVERY_MAX_INSTALL_PER_RUN = 3
+const MAX_AUTO_DISCOVERY_MAX_INSTALL_PER_RUN = 10
+const AUTO_DISCOVERY_SYSTEM_PROMPT = `
+## Skill Discovery
+
+Automatic skill discovery is enabled. If the installed skills above are not enough for the user's request:
+
+1. Use search_skill_repository to find relevant skills from the indexed skill repositories.
+2. Install only the most relevant skills with install_workspace_skills.
+3. After installation, read the installed skill's SKILL.md with read_skill_file and follow its instructions.
+
+Search only when a new skill is likely to materially improve the answer. Do not install unrelated or speculative skills.`
 const SKILLS_SYSTEM_PROMPT = `
 ## Skills System
 
@@ -183,7 +212,9 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 		@InjectRepository(SkillPackage)
 		private readonly skillPackageRepository: Repository<SkillPackage>,
 		@InjectRepository(XpertWorkspace)
-		private readonly workspaceRepository: Repository<XpertWorkspace>
+		private readonly workspaceRepository: Repository<XpertWorkspace>,
+		private readonly skillPackageService: SkillPackageService,
+		private readonly skillIndexService: SkillRepositoryIndexService
 	) {}
 
 	readonly meta: TAgentMiddlewareMeta = {
@@ -236,6 +267,83 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 					'x-ui': {
 						component: 'textarea',
 						span: 2
+					}
+				},
+				autoDiscovery: {
+					type: 'object',
+					title: {
+						en_US: 'Auto Skill Discovery',
+						zh_Hans: '自动发现技能'
+					},
+					description: {
+						en_US: 'Let the agent search indexed skill repositories and install relevant skills into the current workspace.',
+						zh_Hans: '允许智能体搜索已索引的技能仓库，并将相关技能安装到当前工作区。'
+					},
+					'x-ui': {
+						cols: 2,
+						span: 2
+					},
+					properties: {
+						enabled: {
+							type: 'boolean',
+							default: false,
+							title: {
+								en_US: 'Enable Auto Discovery',
+								zh_Hans: '启用自动发现'
+							},
+							description: {
+								en_US: 'Disabled by default to preserve existing agent behavior.',
+								zh_Hans: '默认关闭，以保持现有智能体行为不变。'
+							}
+						},
+						repositoryIds: {
+							type: 'array',
+							items: {
+								type: 'string'
+							},
+							title: {
+								en_US: 'Repository Scope',
+								zh_Hans: '仓库范围'
+							},
+							description: {
+								en_US: 'Optional repository allowlist. Leave empty to search all visible indexed repositories.',
+								zh_Hans: '可选仓库白名单。留空则搜索所有当前可见且已索引的仓库。'
+							},
+							'x-ui': {
+								component: 'remoteSelect',
+								selectUrl: '/api/skill-repository/select-options',
+								multiple: true,
+								span: 2
+							}
+						},
+						searchLimit: {
+							type: 'integer',
+							default: DEFAULT_AUTO_DISCOVERY_SEARCH_LIMIT,
+							minimum: 1,
+							maximum: MAX_AUTO_DISCOVERY_SEARCH_LIMIT,
+							title: {
+								en_US: 'Search Limit',
+								zh_Hans: '搜索数量'
+							},
+							description: {
+								en_US: 'Maximum number of skills returned by each repository search.',
+								zh_Hans: '每次技能仓库搜索最多返回的技能数量。'
+							}
+						},
+						maxInstallPerRun: {
+							type: 'integer',
+							default: DEFAULT_AUTO_DISCOVERY_MAX_INSTALL_PER_RUN,
+							minimum: 1,
+							maximum: MAX_AUTO_DISCOVERY_MAX_INSTALL_PER_RUN,
+							title: {
+								en_US: 'Install Limit',
+								zh_Hans: '安装上限'
+							},
+							description: {
+								en_US: 'Maximum number of skills the agent can install in one tool call.',
+								zh_Hans: '智能体单次工具调用最多可安装的技能数量。'
+							}
+						}
 					}
 				}
 			}
@@ -308,6 +416,38 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 		}
 	}
 
+	private normalizeInteger(value: unknown, fallback: number, min: number, max: number) {
+		const parsed =
+			typeof value === 'number'
+				? value
+				: typeof value === 'string' && value.trim()
+					? Number(value.trim())
+					: fallback
+		if (!Number.isInteger(parsed)) {
+			return fallback
+		}
+		return Math.min(Math.max(parsed, min), max)
+	}
+
+	private resolveAutoDiscoveryOptions(options?: ISkillsMiddlewareOptions | null): ConfigAutoDiscoveryOptions {
+		return {
+			enabled: options?.autoDiscovery?.enabled === true,
+			repositoryIds: this.sanitizeSkillIds(options?.autoDiscovery?.repositoryIds),
+			searchLimit: this.normalizeInteger(
+				options?.autoDiscovery?.searchLimit,
+				DEFAULT_AUTO_DISCOVERY_SEARCH_LIMIT,
+				1,
+				MAX_AUTO_DISCOVERY_SEARCH_LIMIT
+			),
+			maxInstallPerRun: this.normalizeInteger(
+				options?.autoDiscovery?.maxInstallPerRun,
+				DEFAULT_AUTO_DISCOVERY_MAX_INSTALL_PER_RUN,
+				1,
+				MAX_AUTO_DISCOVERY_MAX_INSTALL_PER_RUN
+			)
+		}
+	}
+
 	private resolveRuntimeSkillSelection(state: Record<string, unknown>): {
 		skillIds: string[]
 		workspaceId: string
@@ -355,6 +495,59 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 
 		const disabledSkillIdSet = new Set(disabledSkillIds)
 		return skills.filter((skill) => !disabledSkillIdSet.has(skill.id))
+	}
+
+	private resolveSearchRepositoryIds(requestedRepositoryIds: string[], allowedRepositoryIds: string[]) {
+		if (!allowedRepositoryIds.length) {
+			return requestedRepositoryIds
+		}
+		if (!requestedRepositoryIds.length) {
+			return allowedRepositoryIds
+		}
+
+		const allowed = new Set(allowedRepositoryIds)
+		return requestedRepositoryIds.filter((repositoryId) => allowed.has(repositoryId))
+	}
+
+	private async findInstalledSkillIndexIds(workspaceId: string, skillIndexIds: string[]) {
+		if (!workspaceId || !skillIndexIds.length) {
+			return new Set<string>()
+		}
+
+		const installed = await this.skillPackageRepository.find({
+			where: {
+				workspaceId,
+				skillIndexId: In(skillIndexIds)
+			}
+		})
+
+		return new Set(
+			installed
+				.map((skillPackage) => skillPackage.skillIndexId)
+				.filter((skillIndexId): skillIndexId is string => typeof skillIndexId === 'string' && !!skillIndexId)
+		)
+	}
+
+	private formatSkillSearchResult(item: ISkillRepositoryIndex, installedSkillIndexIds: Set<string>) {
+		return {
+			indexId: item.id,
+			skillId: item.skillId,
+			name: item.name ?? item.skillId,
+			description: item.description ?? '',
+			tags: item.tags ?? [],
+			version: item.version ?? '',
+			link: item.link ?? '',
+			installed: installedSkillIndexIds.has(item.id),
+			repository: item.repository
+				? {
+						id: item.repository.id,
+						name: item.repository.name,
+						provider: item.repository.provider
+					}
+				: {
+						id: item.repositoryId
+					}
+		}
 	}
 
 	private escapeForShell(value: string): string {
@@ -428,10 +621,13 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 	): Promise<AgentMiddleware> {
 		const { tenantId, userId, workspaceId: contextWorkspaceId, projectId } = context
 		const normalizedContextWorkspaceId = this.sanitizeWorkspaceId(contextWorkspaceId)
+		const autoDiscoveryOptions = this.resolveAutoDiscoveryOptions(options)
 		this.#logger.debug(`SkillsMiddleware using context workspace: ${normalizedContextWorkspaceId}`)
 		let runtimeSandbox: unknown = null
 		let runtimeSkillsRootInContainer = join(FALLBACK_RUNTIME_ROOT_IN_CONTAINER, RUNTIME_SKILLS_DIRECTORY)
 		let runtimeWorkingDirectory = ''
+		let lastEffectiveWorkspaceId = normalizedContextWorkspaceId
+		const autoInstalledSkillSelections = new Map<string, Set<string>>()
 
 		/**
 		 * Read skill's file tool
@@ -538,6 +734,132 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 			}
 		)
 
+		const searchSkillRepository = tool(
+			async ({ query, limit, repositoryIds }) => {
+				const search = typeof query === 'string' ? query.trim() : ''
+				const requestedLimit = this.normalizeInteger(
+					limit,
+					autoDiscoveryOptions.searchLimit,
+					1,
+					MAX_AUTO_DISCOVERY_SEARCH_LIMIT
+				)
+				const take = Math.min(requestedLimit, autoDiscoveryOptions.searchLimit)
+				const searchRepositoryIds = this.resolveSearchRepositoryIds(
+					this.sanitizeSkillIds(repositoryIds),
+					autoDiscoveryOptions.repositoryIds
+				)
+
+				if (autoDiscoveryOptions.repositoryIds.length && !searchRepositoryIds.length) {
+					return {
+						items: [],
+						total: 0,
+						message: 'No configured skill repositories match the requested repository scope.'
+					}
+				}
+
+				const { items, total } = await this.skillIndexService.findMarketplace(
+					{
+						where: searchRepositoryIds.length
+							? {
+									repositoryId: In(searchRepositoryIds)
+								}
+							: undefined,
+						order: {
+							updatedAt: 'DESC'
+						},
+						take
+					},
+					search
+				)
+				const skillIndexIds = items.map((item) => item.id).filter((id): id is string => typeof id === 'string')
+				const installedSkillIndexIds = await this.findInstalledSkillIndexIds(
+					lastEffectiveWorkspaceId,
+					skillIndexIds
+				)
+
+				return {
+					query: search,
+					workspaceId: lastEffectiveWorkspaceId,
+					total,
+					items: items.map((item) => this.formatSkillSearchResult(item, installedSkillIndexIds))
+				}
+			},
+			{
+				name: 'search_skill_repository',
+				description:
+					'Search indexed skill repositories for skills relevant to the user task. Use this before installing new skills when current installed skills are insufficient.',
+				schema: z.object({
+					query: z.string().describe('Search query describing the skill capability needed.'),
+					limit: z.number().int().positive().optional().describe('Optional result limit for this search.'),
+					repositoryIds: z
+						.array(z.string())
+						.optional()
+						.describe('Optional repository IDs to narrow the search within the configured repository scope.')
+				})
+			}
+		)
+
+		const installWorkspaceSkills = tool(
+			async ({ indexIds }) => {
+				const normalizedIndexIds = this.sanitizeSkillIds(indexIds)
+				if (!normalizedIndexIds.length) {
+					throw new Error('indexIds must contain at least one skill repository index ID.')
+				}
+				if (normalizedIndexIds.length > autoDiscoveryOptions.maxInstallPerRun) {
+					throw new Error(
+						`Too many skills requested. Install at most ${autoDiscoveryOptions.maxInstallPerRun} skills in one call.`
+					)
+				}
+				if (!lastEffectiveWorkspaceId) {
+					throw new Error('Workspace context is required to install skills.')
+				}
+
+				const installedPackageIds: string[] = []
+				for (const indexId of normalizedIndexIds) {
+					const skillPackage = await this.skillPackageService.ensureInstalledSkillPackage(
+						lastEffectiveWorkspaceId,
+						indexId
+					)
+					if (skillPackage?.id) {
+						installedPackageIds.push(skillPackage.id)
+						const workspaceSelections =
+							autoInstalledSkillSelections.get(lastEffectiveWorkspaceId) ?? new Set<string>()
+						workspaceSelections.add(skillPackage.id)
+						autoInstalledSkillSelections.set(lastEffectiveWorkspaceId, workspaceSelections)
+					}
+				}
+
+				const installedSkills = await this.loadSkillMetadata(
+					runtimeSkillsRootInContainer,
+					installedPackageIds,
+					lastEffectiveWorkspaceId
+				)
+				await this.syncSkillsToSandbox(tenantId, runtimeSandbox, runtimeSkillsRootInContainer, installedSkills)
+
+				return {
+					workspaceId: lastEffectiveWorkspaceId,
+					installed: installedSkills.map((skill) => ({
+						id: skill.id,
+						name: skill.name,
+						description: skill.description ?? '',
+						path: skill.path,
+						repositoryId: skill.repositoryId
+					}))
+				}
+			},
+			{
+				name: 'install_workspace_skills',
+				description:
+					'Install selected skills from repository search results into the current workspace. After installing, read the returned SKILL.md paths with read_skill_file.',
+				schema: z.object({
+					indexIds: z
+						.array(z.string())
+						.min(1)
+						.describe('Skill repository index IDs returned by search_skill_repository.')
+				})
+			}
+		)
+
 		let skillsSynced = false
 		// Track which selection was last synced to avoid re-copying on every model call
 		let lastSyncedKey = ''
@@ -545,7 +867,11 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 		return {
 			name: SKILLS_MIDDLEWARE_NAME,
 			stateSchema: this.stateSchema,
-			tools: [readSkillFile /*skillShell*/],
+			tools: [
+				readSkillFile,
+				...(autoDiscoveryOptions.enabled ? [searchSkillRepository, installWorkspaceSkills] : [])
+				/*skillShell*/
+			],
 			wrapModelCall: async (request, handler) => {
 				runtimeSandbox = request.runtime?.configurable?.sandbox ?? null
 				runtimeWorkingDirectory = this.getSandboxWorkingDirectory(runtimeSandbox)
@@ -574,6 +900,7 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 				)
 				const shouldUseConfiguredDefaults =
 					runtimeSkillSelectionMode !== 'workspace_blacklist' && !hasRuntimeSelection
+				lastEffectiveWorkspaceId = runtimeWorkspaceId
 
 				const workspaceSkillSelections = new Map<string, Set<string>>()
 				if (shouldUseConfiguredDefaults) {
@@ -589,6 +916,14 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 					runtimeSkillIds.length > 0
 				) {
 					this.appendWorkspaceSkills(workspaceSkillSelections, runtimeWorkspaceId, runtimeSkillIds)
+					const autoInstalledSkillIds = autoInstalledSkillSelections.get(runtimeWorkspaceId)
+					if (autoInstalledSkillIds?.size) {
+						this.appendWorkspaceSkills(
+							workspaceSkillSelections,
+							runtimeWorkspaceId,
+							Array.from(autoInstalledSkillIds)
+						)
+					}
 				}
 
 				const skills: SkillPromptMetadata[] = []
@@ -624,41 +959,19 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 				const syncKey = this.buildSyncKey(effectiveSkills)
 				if (!skillsSynced || syncKey !== lastSyncedKey) {
 					const sandbox = request.runtime.configurable.sandbox
-					for await (const skill of effectiveSkills) {
-						const packagePath = skill.packagePath?.trim()
-						if (!packagePath) {
-							continue
-						}
-
-						try {
-							const workspaceRoot = getWorkspaceRoot(tenantId, skill.workspaceId)
-							const localSkillPath = await this.resolveLocalPackagePath(workspaceRoot, packagePath)
-							if (!localSkillPath) {
-								this.#logger.warn(
-									`Skip syncing skill "${skill.name}" because package path "${packagePath}" is missing in workspace "${skill.workspaceId}".`
-								)
-								continue
-							}
-							await this.commandBus.execute(
-								new SandboxCopyFileCommand(sandbox, {
-									version: skill.version,
-									localPath: localSkillPath,
-									containerPath: join(runtimeSkillsRootInContainer, packagePath),
-									overwrite: true
-								})
-							)
-						} catch (error) {
-							this.#logger.error(
-								`Failed to copy skill package files for skill ${skill.name}: ${(error as Error).message}`
-							)
-						}
-					}
+					await this.syncSkillsToSandbox(tenantId, sandbox, runtimeSkillsRootInContainer, effectiveSkills)
 					skillsSynced = true
 					lastSyncedKey = syncKey
 				}
 
 				const skillsSection = this.buildSkillsSection(runtimeSkillsRootInContainer, effectiveSkills)
-				const extraPrompt = [options?.systemPrompt, skillsSection].filter(Boolean).join('\n\n')
+				const extraPrompt = [
+					options?.systemPrompt,
+					skillsSection,
+					autoDiscoveryOptions.enabled ? AUTO_DISCOVERY_SYSTEM_PROMPT : null
+				]
+					.filter(Boolean)
+					.join('\n\n')
 
 				if (!extraPrompt) {
 					return handler(request)
@@ -693,6 +1006,43 @@ export class SkillsMiddleware implements IAgentMiddlewareStrategy<ISkillsMiddlew
 			.map((skill) => `${skill.workspaceId}:${skill.id}:${skill.version}`)
 			.sort()
 			.join('|')
+	}
+
+	private async syncSkillsToSandbox(
+		tenantId: string,
+		sandbox: unknown,
+		runtimeSkillsRootInContainer: string,
+		skills: SkillPromptMetadata[]
+	) {
+		for await (const skill of skills) {
+			const packagePath = skill.packagePath?.trim()
+			if (!packagePath) {
+				continue
+			}
+
+			try {
+				const workspaceRoot = getWorkspaceRoot(tenantId, skill.workspaceId)
+				const localSkillPath = await this.resolveLocalPackagePath(workspaceRoot, packagePath)
+				if (!localSkillPath) {
+					this.#logger.warn(
+						`Skip syncing skill "${skill.name}" because package path "${packagePath}" is missing in workspace "${skill.workspaceId}".`
+					)
+					continue
+				}
+				await this.commandBus.execute(
+					new SandboxCopyFileCommand(sandbox, {
+						version: skill.version,
+						localPath: localSkillPath,
+						containerPath: join(runtimeSkillsRootInContainer, packagePath),
+						overwrite: true
+					})
+				)
+			} catch (error) {
+				this.#logger.error(
+					`Failed to copy skill package files for skill ${skill.name}: ${(error as Error).message}`
+				)
+			}
+		}
 	}
 
 	private async pathExists(path: string): Promise<boolean> {

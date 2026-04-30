@@ -2,6 +2,14 @@ jest.mock('../../skill-package.entity', () => ({
   SkillPackage: class SkillPackage {}
 }))
 
+jest.mock('../../skill-package.service', () => ({
+  SkillPackageService: class SkillPackageService {}
+}))
+
+jest.mock('../../../skill-repository/repository-index/skill-repository-index.service', () => ({
+  SkillRepositoryIndexService: class SkillRepositoryIndexService {}
+}))
+
 jest.mock('../../../xpert-workspace', () => ({
   getWorkspaceRoot: jest.fn(() => '/workspace-root')
 }))
@@ -25,15 +33,51 @@ import { SkillsMiddleware } from './index'
 describe('SkillsMiddleware', () => {
   const runtimeWorkingDirectory = '/workspace/runtime'
   const runtimeSkillsRoot = '/workspace/runtime/.xpert/skills'
+  type SearchToolResult = {
+    items: Array<{
+      indexId: string
+      installed: boolean
+    }>
+    total: number
+  }
+  type InstallToolResult = {
+    workspaceId: string
+    installed: Array<{
+      id: string
+      path?: string
+    }>
+  }
+  type MiddlewareInternals = {
+    loadSkillMetadata: (workspaceRoot: string, skillIds: string[], workspaceId: string) => Promise<unknown[]>
+    syncSkillsToSandbox: (
+      tenantId: string,
+      sandbox: unknown,
+      runtimeSkillsRootInContainer: string,
+      skills: unknown[]
+    ) => Promise<void>
+  }
 
   function createMiddleware() {
+    const skillPackageRepository = {
+      find: jest.fn().mockResolvedValue([])
+    }
+    const workspaceRepository = {
+      createQueryBuilder: jest.fn()
+    }
+    const skillPackageService = {
+      ensureInstalledSkillPackage: jest.fn()
+    }
+    const skillIndexService = {
+      findMarketplace: jest.fn().mockResolvedValue({
+        items: [],
+        total: 0
+      })
+    }
     const middleware = new SkillsMiddleware(
-      {
-        find: jest.fn().mockResolvedValue([])
-      } as any,
-      {
-        createQueryBuilder: jest.fn()
-      } as any
+      skillPackageRepository as never,
+      workspaceRepository as never,
+      skillPackageService as never,
+      skillIndexService as never
     )
 
     ;(middleware as any).commandBus = {
@@ -42,6 +86,300 @@ describe('SkillsMiddleware', () => {
 
     return middleware
   }
+
+  function createRuntime() {
+    return {
+      createModelClient: jest.fn(),
+      wrapWorkflowNodeExecution: jest.fn()
+    }
+  }
+
+  function createContext(workspaceId = 'workspace-1') {
+    return {
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId,
+      projectId: null,
+      node: {} as never,
+      tools: new Map(),
+      runtime: createRuntime()
+    }
+  }
+
+  function getTool(instance: Awaited<ReturnType<SkillsMiddleware['createMiddleware']>>, name: string) {
+    const found = instance.tools?.find((item) => item.name === name)
+    if (!found) {
+      throw new Error(`Tool ${name} not found`)
+    }
+    return found
+  }
+
+  it('keeps auto discovery disabled by default and exposes only read_skill_file', async () => {
+    const middleware = createMiddleware()
+
+    const instance = await middleware.createMiddleware({}, createContext())
+
+    expect(instance.tools?.map((item) => item.name)).toEqual(['read_skill_file'])
+  })
+
+  it('adds search and install tools when auto discovery is enabled without duplicating read_skill_file', async () => {
+    const middleware = createMiddleware()
+
+    const instance = await middleware.createMiddleware(
+      {
+        autoDiscovery: {
+          enabled: true
+        }
+      },
+      createContext()
+    )
+
+    const toolNames = instance.tools?.map((item) => item.name) ?? []
+    expect(toolNames.filter((name) => name === 'read_skill_file')).toHaveLength(1)
+    expect(toolNames).toEqual(['read_skill_file', 'search_skill_repository', 'install_workspace_skills'])
+  })
+
+  it('searches all visible repositories with the default limit when no repository scope is configured', async () => {
+    const middleware = createMiddleware()
+    const skillIndexService = Reflect.get(middleware, 'skillIndexService') as {
+      findMarketplace: jest.Mock
+    }
+
+    const instance = await middleware.createMiddleware(
+      {
+        autoDiscovery: {
+          enabled: true
+        }
+      },
+      createContext()
+    )
+
+    const searchTool = getTool(instance, 'search_skill_repository')
+    await searchTool.invoke({
+      query: 'browser automation'
+    })
+
+    expect(skillIndexService.findMarketplace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: undefined,
+        take: 5
+      }),
+      'browser automation'
+    )
+  })
+
+  it('searches visible skill repositories with configured repository scope, caps limits, and marks installed skills', async () => {
+    const middleware = createMiddleware()
+    const skillIndexService = Reflect.get(middleware, 'skillIndexService') as {
+      findMarketplace: jest.Mock
+    }
+    const skillPackageRepository = Reflect.get(middleware, 'skillPackageRepository') as {
+      find: jest.Mock
+    }
+    skillIndexService.findMarketplace.mockResolvedValue({
+      items: [
+        {
+          id: 'index-installed',
+          repositoryId: 'repo-allowed',
+          skillId: 'weather',
+          name: 'Weather',
+          description: 'Weather skill',
+          tags: ['weather'],
+          version: '1.0.0',
+          repository: {
+            id: 'repo-allowed',
+            name: 'Allowed repository',
+            provider: 'github'
+          }
+        },
+        {
+          id: 'index-new',
+          repositoryId: 'repo-allowed',
+          skillId: 'calendar',
+          name: 'Calendar',
+          description: 'Calendar skill',
+          tags: ['calendar'],
+          version: '1.0.0',
+          repository: {
+            id: 'repo-allowed',
+            name: 'Allowed repository',
+            provider: 'github'
+          }
+        }
+      ],
+      total: 2
+    })
+    skillPackageRepository.find.mockResolvedValue([
+      {
+        skillIndexId: 'index-installed'
+      }
+    ])
+
+    const instance = await middleware.createMiddleware(
+      {
+        autoDiscovery: {
+          enabled: true,
+          repositoryIds: ['repo-allowed'],
+          searchLimit: 99
+        }
+      },
+      createContext()
+    )
+
+    const searchTool = getTool(instance, 'search_skill_repository')
+    const result = (await searchTool.invoke({
+      query: 'weather',
+      repositoryIds: ['repo-allowed', 'repo-blocked'],
+      limit: 99
+    })) as SearchToolResult
+
+    expect(skillIndexService.findMarketplace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          repositoryId: expect.any(Object)
+        }),
+        take: 20
+      }),
+      'weather'
+    )
+    expect(result.total).toBe(2)
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        indexId: 'index-installed',
+        installed: true
+      }),
+      expect.objectContaining({
+        indexId: 'index-new',
+        installed: false
+      })
+    ])
+  })
+
+  it('installs discovered skills into the effective workspace and loads them on the next model call', async () => {
+    const middleware = createMiddleware()
+    const skillPackageService = Reflect.get(middleware, 'skillPackageService') as {
+      ensureInstalledSkillPackage: jest.Mock
+    }
+    skillPackageService.ensureInstalledSkillPackage
+      .mockResolvedValueOnce({
+        id: 'pkg-weather'
+      })
+      .mockResolvedValueOnce({
+        id: 'pkg-calendar'
+      })
+
+    const internals = middleware as unknown as MiddlewareInternals
+    const loadSkillMetadata = jest.spyOn(internals, 'loadSkillMetadata').mockResolvedValue([
+      {
+        id: 'pkg-weather',
+        name: 'Weather',
+        description: 'Weather skill',
+        path: `${runtimeSkillsRoot}/weather/SKILL.md`,
+        packagePath: 'weather',
+        workspaceId: 'workspace-1',
+        version: '1'
+      },
+      {
+        id: 'pkg-calendar',
+        name: 'Calendar',
+        description: 'Calendar skill',
+        path: `${runtimeSkillsRoot}/calendar/SKILL.md`,
+        packagePath: 'calendar',
+        workspaceId: 'workspace-1',
+        version: '1'
+      }
+    ])
+    const syncSkillsToSandbox = jest.spyOn(internals, 'syncSkillsToSandbox').mockResolvedValue(undefined)
+
+    const instance = await middleware.createMiddleware(
+      {
+        autoDiscovery: {
+          enabled: true,
+          maxInstallPerRun: 2
+        }
+      },
+      createContext()
+    )
+    const handler = jest.fn(async (request) => request)
+    await instance.wrapModelCall(
+      {
+        runtime: {
+          configurable: {
+            sandbox: {
+              workingDirectory: runtimeWorkingDirectory
+            }
+          }
+        },
+        state: {},
+        systemMessage: new SystemMessage('base')
+      } as never,
+      handler
+    )
+
+    const installTool = getTool(instance, 'install_workspace_skills')
+    const installResult = (await installTool.invoke({
+      indexIds: ['index-weather', 'index-calendar']
+    })) as InstallToolResult
+
+    expect(skillPackageService.ensureInstalledSkillPackage).toHaveBeenNthCalledWith(
+      1,
+      'workspace-1',
+      'index-weather'
+    )
+    expect(skillPackageService.ensureInstalledSkillPackage).toHaveBeenNthCalledWith(
+      2,
+      'workspace-1',
+      'index-calendar'
+    )
+    expect(syncSkillsToSandbox).toHaveBeenCalled()
+    expect(installResult.workspaceId).toBe('workspace-1')
+    expect(installResult.installed).toHaveLength(2)
+
+    loadSkillMetadata.mockClear()
+    const nextResult = (await instance.wrapModelCall(
+      {
+        runtime: {
+          configurable: {
+            sandbox: {
+              workingDirectory: runtimeWorkingDirectory
+            }
+          }
+        },
+        state: {},
+        systemMessage: new SystemMessage('base')
+      } as never,
+      handler
+    )) as unknown as { systemMessage: { content: string } }
+
+    expect(loadSkillMetadata).toHaveBeenCalledWith(
+      runtimeSkillsRoot,
+      ['pkg-weather', 'pkg-calendar'],
+      'workspace-1'
+    )
+    expect(nextResult.systemMessage.content).toContain('Weather')
+    expect(nextResult.systemMessage.content).toContain('Skill Discovery')
+  })
+
+  it('rejects auto discovery installs over the configured per-call limit', async () => {
+    const middleware = createMiddleware()
+    const instance = await middleware.createMiddleware(
+      {
+        autoDiscovery: {
+          enabled: true,
+          maxInstallPerRun: 1
+        }
+      },
+      createContext()
+    )
+
+    const installTool = getTool(instance, 'install_workspace_skills')
+
+    await expect(
+      installTool.invoke({
+        indexIds: ['index-a', 'index-b']
+      })
+    ).rejects.toThrow('Install at most 1 skills in one call.')
+  })
 
   it('filters disabled configured skills before building the prompt section', async () => {
     const middleware = createMiddleware()
@@ -71,6 +409,7 @@ describe('SkillsMiddleware', () => {
         tools: new Map(),
         runtime: {} as any
       }
+      createContext()
     )
 
     const handler = jest.fn(async (request) => request)
@@ -116,15 +455,7 @@ describe('SkillsMiddleware', () => {
       {
         skills: []
       },
-      {
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        projectId: null,
-        node: {} as any,
-        tools: new Map(),
-        runtime: {} as any
-      }
+      createContext()
     )
 
     const handler = jest.fn(async (request) => request)
@@ -295,15 +626,7 @@ describe('SkillsMiddleware', () => {
       {
         skills: []
       },
-      {
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        projectId: null,
-        node: {} as any,
-        tools: new Map(),
-        runtime: {} as any
-      }
+      createContext()
     )
 
     const handler = jest.fn(async (request) => request)
@@ -394,15 +717,7 @@ describe('SkillsMiddleware', () => {
           disabledSkillIds: ['repository-skill']
         }
       },
-      {
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        projectId: null,
-        node: {} as any,
-        tools: new Map(),
-        runtime: {} as any
-      }
+      createContext()
     )
 
     const handler = jest.fn(async (request) => request)
@@ -515,15 +830,7 @@ describe('SkillsMiddleware', () => {
           disabledSkillIds: ['skill-public-b']
         }
       },
-      {
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        projectId: null,
-        node: {} as any,
-        tools: new Map(),
-        runtime: {} as any
-      }
+      createContext()
     )
 
     const handler = jest.fn(async (request) => request)
@@ -575,15 +882,7 @@ describe('SkillsMiddleware', () => {
       {
         skills: ['skill-a']
       },
-      {
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        projectId: null,
-        node: {} as any,
-        tools: new Map(),
-        runtime: {} as any
-      }
+      createContext()
     )
 
     const handler = jest.fn(async (request) => request)
