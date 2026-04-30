@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, computed, effect, inject, OnDestroy, signal } from '@angular/core'
 import { TranslateModule } from '@ngx-translate/core'
 import { ChatKit } from '@xpert-ai/chatkit-angular'
-import type { TChatElementReference, TChatFileElementReference } from '@xpert-ai/contracts'
+import type { ChatKitQuoteReference, TChatElementReference, TChatFileElementReference } from '@xpert-ai/contracts'
 import { ZardButtonComponent, ZardIconComponent, ZardTabsImports } from '@xpert-ai/headless-ui'
 import { firstValueFrom } from 'rxjs'
 import { ChatComputerTimelineComponent } from '../../../@shared/chat/computer-timeline/computer-timeline.component'
@@ -35,7 +35,7 @@ type ChatKitCodeComposerReference = {
   language?: string
 }
 
-type ChatKitComposerReference = ChatKitCodeComposerReference | TChatElementReference | TChatFileElementReference
+type ChatKitComposerReference = ChatKitCodeComposerReference | ChatKitQuoteReference
 type ClawXpertConversationPanel = 'files' | 'computer' | 'preview' | 'terminal'
 
 type ChatKitReferenceComposerControl = {
@@ -492,7 +492,7 @@ export class ClawXpertConversationDetailComponent implements OnDestroy {
 
   async handleWorkspaceReference(request: FileWorkbenchReferenceRequest) {
     if (isFileElementReferenceRequest(request)) {
-      await this.attachComposerReferences([request])
+      await this.attachComposerReferences([toFileElementQuoteReference(request)])
       return
     }
 
@@ -509,7 +509,7 @@ export class ClawXpertConversationDetailComponent implements OnDestroy {
   }
 
   async handleElementReference(request: TChatElementReference) {
-    await this.attachComposerReferences([request])
+    await this.attachComposerReferences([toPageElementQuoteReference(request)])
   }
 
   selectPanel(panel: ClawXpertConversationPanel) {
@@ -691,6 +691,83 @@ export class ClawXpertConversationDetailComponent implements OnDestroy {
 function resolveConversationId(metadata?: { id?: string }) {
   const conversationId = metadata?.id
   return typeof conversationId === 'string' && conversationId.trim() ? conversationId : null
+}
+
+function toFileElementQuoteReference(reference: TChatFileElementReference): ChatKitQuoteReference {
+  const source = formatFileElementSource(reference)
+
+  return {
+    type: 'quote',
+    label: reference.label?.trim() || `${reference.tagName.toLowerCase()} ${reference.selector}`,
+    source,
+    text: [
+      'Reference type: HTML file element',
+      `File: ${source}`,
+      reference.documentTitle?.trim() ? `Document title: ${reference.documentTitle.trim()}` : null,
+      `Selector: ${reference.selector}`,
+      `DOM path: ${reference.domPath}`,
+      `Tag: ${reference.tagName.toLowerCase()}`,
+      reference.role?.trim() ? `Role: ${reference.role.trim()}` : null,
+      `Attributes: ${formatElementAttributes(reference.attributes)}`,
+      'Visible text:',
+      reference.text,
+      'HTML:',
+      '```html',
+      reference.outerHtml,
+      '```'
+    ]
+      .filter((line): line is string => line !== null)
+      .join('\n')
+  }
+}
+
+function toPageElementQuoteReference(reference: TChatElementReference): ChatKitQuoteReference {
+  const source = reference.pageTitle?.trim() || reference.pageUrl.trim()
+
+  return {
+    type: 'quote',
+    label: reference.label?.trim() || `${reference.tagName.toLowerCase()} ${reference.selector}`,
+    source,
+    text: [
+      'Reference type: Page element',
+      source ? `Page: ${source}` : null,
+      `URL: ${reference.pageUrl}`,
+      `Service: ${reference.serviceId}`,
+      `Selector: ${reference.selector}`,
+      `Tag: ${reference.tagName.toLowerCase()}`,
+      reference.role?.trim() ? `Role: ${reference.role.trim()}` : null,
+      `Attributes: ${formatElementAttributes(reference.attributes)}`,
+      'Visible text:',
+      reference.text,
+      'HTML:',
+      '```html',
+      reference.outerHtml,
+      '```'
+    ]
+      .filter((line): line is string => line !== null)
+      .join('\n')
+  }
+}
+
+function formatFileElementSource(reference: TChatFileElementReference) {
+  if (typeof reference.sourceStartLine !== 'number') {
+    return reference.filePath
+  }
+
+  const lineRange =
+    reference.sourceStartLine === reference.sourceEndLine
+      ? `${reference.sourceStartLine}`
+      : `${reference.sourceStartLine}-${reference.sourceEndLine ?? reference.sourceStartLine}`
+
+  return `${reference.filePath}:${lineRange}`
+}
+
+function formatElementAttributes(attributes: Array<{ name: string; value: string }>) {
+  if (!attributes.length) {
+    return '(none)'
+  }
+
+  return attributes.map((attribute) => `${attribute.name}="${attribute.value}"`).join(' ')
 }
 
 function isFileElementReferenceRequest(

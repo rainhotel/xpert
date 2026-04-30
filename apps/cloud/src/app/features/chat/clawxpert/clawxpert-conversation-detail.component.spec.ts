@@ -589,19 +589,19 @@ describe('ClawXpertConversationDetailComponent', () => {
 
     expect(setComposerValue).toHaveBeenCalledWith({
       references: [
-        {
-          type: 'file_element',
-          attributes: [{ name: 'id', value: 'hero' }],
-          domPath: 'html > body > button',
-          filePath: 'index.html',
-          outerHtml: '<button id="hero">Launch</button>',
-          selector: '#hero',
-          tagName: 'button',
-          text: 'Launch'
-        }
+        expect.objectContaining({
+          type: 'quote',
+          label: 'button #hero',
+          source: 'index.html'
+        })
       ],
       appendReferences: true
     })
+    const reference = setComposerValue.mock.calls.at(-1)?.[0].references[0] as { text: string }
+    expect(reference.text).toContain('Reference type: HTML file element')
+    expect(reference.text).toContain('Selector: #hero')
+    expect(reference.text).toContain('DOM path: html > body > button')
+    expect(reference.text).toContain('<button id="hero">Launch</button>')
     expect(focusComposer).toHaveBeenCalled()
   })
 
@@ -646,25 +646,19 @@ describe('ClawXpertConversationDetailComponent', () => {
 
     expect(setComposerValue).toHaveBeenCalledWith({
       references: [
-        {
-          attributes: [
-            {
-              name: 'data-testid',
-              value: 'hero-title'
-            }
-          ],
-          outerHtml: '<h1 data-testid="hero-title">Hello</h1>',
-          pageTitle: 'Preview Page',
-          pageUrl: 'http://localhost:4173/',
-          selector: 'main > h1',
-          serviceId: 'service-1',
-          tagName: 'h1',
-          text: 'Hello',
-          type: 'element'
-        }
+        expect.objectContaining({
+          type: 'quote',
+          label: 'h1 main > h1',
+          source: 'Preview Page'
+        })
       ],
       appendReferences: true
     })
+    const reference = setComposerValue.mock.calls.at(-1)?.[0].references[0] as { text: string }
+    expect(reference.text).toContain('Reference type: Page element')
+    expect(reference.text).toContain('URL: http://localhost:4173/')
+    expect(reference.text).toContain('Selector: main > h1')
+    expect(reference.text).toContain('<h1 data-testid="hero-title">Hello</h1>')
     expect(focusComposer).toHaveBeenCalled()
   })
 

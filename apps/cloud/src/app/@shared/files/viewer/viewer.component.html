@@ -37,6 +37,18 @@
         </button>
       }
 
+      @if (canInspectHtmlPreview()) {
+        <button
+          type="button"
+          data-html-inspect-button="viewer"
+          [class]="htmlInspectMode() ? 'btn btn-primary btn-small' : 'btn btn-secondary btn-small'"
+          (click)="toggleHtmlInspectMode()"
+        >
+          <i class="ri-focus-3-line mr-1"></i>
+          {{ 'PAC.Chat.ClawXpert.Inspect' | translate: { Default: 'Inspect' } }}
+        </button>
+      }
+
       <z-segmented [(ngModel)]="mode">
         <z-segmented-item [value]="'view'" [label]="'PAC.Chat.View' | translate: { Default: 'View' }" />
         <z-segmented-item
@@ -97,8 +109,10 @@
           [referenceable]="previewContentReferenceable()"
           [spreadsheet]="previewData().spreadsheet"
           [url]="previewUrl() || file()?.fileUrl || file()?.url || null"
+          [htmlInspectMode]="htmlInspectMode()"
           (download)="download.emit()"
           (fileElementReference)="referenceElement.emit($event)"
+          (htmlInspectModeChange)="htmlInspectMode.set($event)"
           (referenceSelection)="referenceSelection.emit($event)"
         />
       } @else if (!readable()) {
