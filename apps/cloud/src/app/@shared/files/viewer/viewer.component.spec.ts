@@ -219,6 +219,21 @@ describe('FileViewerComponent', () => {
     expect(button.nativeElement.querySelector('i')?.classList.contains('ri-sidebar-unfold-line')).toBe(true)
   })
 
+  it('emits refresh requests from the header control', () => {
+    const fixture = TestBed.createComponent(FileViewerComponent)
+    fixture.componentRef.setInput('filePath', 'README.md')
+    fixture.detectChanges()
+
+    const refreshes: number[] = []
+    fixture.componentInstance.refresh.subscribe(() => refreshes.push(1))
+
+    const button = fixture.debugElement.query(By.css('[data-refresh-button="viewer"]'))
+    expect(button).not.toBeNull()
+
+    ;(button.nativeElement as HTMLButtonElement).click()
+    expect(refreshes).toEqual([1])
+  })
+
   it('disables the inline selection action in markdown preview while keeping full-file references', () => {
     const fixture = TestBed.createComponent(FileViewerComponent)
     fixture.componentRef.setInput('filePath', 'README.md')

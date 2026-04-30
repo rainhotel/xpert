@@ -56,6 +56,19 @@
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
+      @if (filePath()) {
+        <button
+          type="button"
+          class="btn btn-secondary btn-small"
+          data-refresh-button="viewer"
+          [disabled]="loading() || saving()"
+          (click)="refresh.emit()"
+        >
+          <i class="ri-refresh-line mr-1" [class.animate-spin]="loading()"></i>
+          {{ 'PAC.Files.RefreshFile' | translate: { Default: 'Refresh' } }}
+        </button>
+      }
+
       @if (canReferenceFile()) {
         <button
           type="button"

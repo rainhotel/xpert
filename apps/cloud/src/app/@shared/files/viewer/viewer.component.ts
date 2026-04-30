@@ -153,6 +153,7 @@ export class FileViewerComponent {
   readonly contentChange = output<string>()
   readonly discard = output<void>()
   readonly save = output<void>()
+  readonly refresh = output<void>()
   readonly back = output<void>()
   readonly download = output<void>()
   readonly referenceFile = output<void>()

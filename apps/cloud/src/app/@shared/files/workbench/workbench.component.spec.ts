@@ -15,6 +15,8 @@ type TFileDirectory = {
   hasChildren?: boolean
   children?: TFileDirectory[] | null
   url?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 type TFile = {
@@ -25,6 +27,8 @@ type TFile = {
   fileUrl?: string
   url?: string
   mimeType?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 const mockToastr = {
@@ -113,6 +117,7 @@ jest.mock('../viewer/viewer.component', () => {
     @Output() readonly contentChange = new EventEmitter<string>()
     @Output() readonly discard = new EventEmitter<void>()
     @Output() readonly save = new EventEmitter<void>()
+    @Output() readonly refresh = new EventEmitter<void>()
     @Output() readonly back = new EventEmitter<void>()
     @Output() readonly download = new EventEmitter<void>()
     @Output() readonly referenceFile = new EventEmitter<void>()
@@ -351,6 +356,46 @@ describe('FileWorkbenchComponent', () => {
     expect(fixture.nativeElement.classList.contains('xp-file-workbench--tree-hidden')).toBe(true)
   })
 
+  it('refreshes the active file when the viewer refresh control is used', async () => {
+    const fileContents: Record<string, TFile> = {
+      'SKILL.md': {
+        filePath: 'SKILL.md',
+        fileType: 'md',
+        contents: '# Before\n',
+        updatedAt: '2026-04-30T00:00:00.000Z'
+      }
+    }
+    const { component, fixture, fileLoader } = await setup({
+      rootFiles: [
+        {
+          filePath: 'SKILL.md',
+          fullPath: 'SKILL.md',
+          fileType: 'md',
+          hasChildren: false,
+          updatedAt: '2026-04-30T00:00:00.000Z'
+        }
+      ],
+      fileContents
+    })
+    const viewer = fixture.debugElement.query(By.directive(MockFileViewerComponent)).componentInstance as any
+    const initialFileLoadCount = fileLoader.mock.calls.length
+
+    fileContents['SKILL.md'] = {
+      filePath: 'SKILL.md',
+      fileType: 'md',
+      contents: '# After\n',
+      updatedAt: '2026-04-30T00:01:00.000Z'
+    }
+
+    viewer.refresh.emit()
+    await fixture.whenStable()
+    await Promise.resolve()
+    fixture.detectChanges()
+
+    expect(fileLoader).toHaveBeenCalledTimes(initialFileLoadCount + 1)
+    expect(component.draftContent()).toBe('# After\n')
+  })
+
   it('incrementally refreshes the root tree without resetting the active draft', async () => {
     const rootFiles: TFileDirectory[] = [
       {
@@ -400,6 +445,50 @@ describe('FileWorkbenchComponent', () => {
     expect(component.fileTree().some((item) => item.fullPath === 'new.txt')).toBe(true)
     expect(component.fileTree().find((item) => item.fullPath === 'SKILL.md')).toBe(skillNodeBefore)
     expect(component.fileTree().find((item) => item.fullPath === 'docs')).toBe(docsNodeBefore)
+  })
+
+  it('reloads the active viewer when the refreshed file list has a newer modified time', async () => {
+    const rootFiles: TFileDirectory[] = [
+      {
+        filePath: 'SKILL.md',
+        fullPath: 'SKILL.md',
+        fileType: 'md',
+        hasChildren: false,
+        updatedAt: '2026-04-30T00:00:00.000Z'
+      }
+    ]
+    const fileContents: Record<string, TFile> = {
+      'SKILL.md': {
+        filePath: 'SKILL.md',
+        fileType: 'md',
+        contents: '# Before\n',
+        updatedAt: '2026-04-30T00:00:00.000Z'
+      }
+    }
+    const { component, fixture, fileLoader } = await setup({ rootFiles, fileContents })
+    const initialFileLoadCount = fileLoader.mock.calls.length
+
+    rootFiles[0] = {
+      ...rootFiles[0],
+      updatedAt: '2026-04-30T00:02:00.000Z'
+    }
+    fileContents['SKILL.md'] = {
+      filePath: 'SKILL.md',
+      fileType: 'md',
+      contents: '# After external edit\n',
+      updatedAt: '2026-04-30T00:02:00.000Z'
+    }
+
+    fixture.componentRef.setInput('reloadKey', 1)
+    fixture.detectChanges()
+    await fixture.whenStable()
+    await Promise.resolve()
+    await Promise.resolve()
+    fixture.detectChanges()
+
+    expect(fileLoader).toHaveBeenCalledTimes(initialFileLoadCount + 1)
+    expect(component.activeFilePath()).toBe('SKILL.md')
+    expect(component.draftContent()).toBe('# After external edit\n')
   })
 
   it('refreshes already expanded directories after a root tree refresh', async () => {

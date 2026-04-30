@@ -69,6 +69,9 @@ type FileWorkbenchPreviewResource = {
   url: string | null
 }
 
+type FileModifiedTimestamp = NonNullable<TFile['createdAt'] | TFile['updatedAt']>
+type FileWithModifiedTimestamp = TFile & ({ readonly updatedAt: FileModifiedTimestamp } | { readonly createdAt: FileModifiedTimestamp })
+
 type LoadDirectoryChildrenOptions = {
   merge?: boolean
   requestToken?: number
@@ -392,6 +395,17 @@ export class FileWorkbenchComponent {
     await this.downloadFileByPath(filePath)
   }
 
+  async refreshActiveFile() {
+    const filePath = this.activeFilePath()
+    if (!filePath || this.fileLoading()) {
+      return
+    }
+
+    await this.guardDirtyBefore(async () => {
+      await this.loadActiveFile(filePath)
+    })
+  }
+
   requestUpload(kind: FileTreeUploadKind = 'file') {
     if (!this.canUploadFiles() || this.uploading()) {
       return
@@ -614,6 +628,10 @@ export class FileWorkbenchComponent {
 
     const requestToken = ++this.#treeRequestToken
     const expandedDirectoryPaths = collectExpandedDirectoryPaths(this.fileTree())
+    const activeFilePath = this.activeFilePath()
+    const knownActiveFileModifiedAt =
+      fileModifiedFingerprint(this.activeFile()) ??
+      fileModifiedFingerprint(findFileTreeNode(this.fileTree(), activeFilePath))
     this.treeLoading.set(true)
 
     try {
@@ -634,6 +652,8 @@ export class FileWorkbenchComponent {
           requestToken
         })
       }
+
+      await this.refreshActiveFileIfModified(activeFilePath, knownActiveFileModifiedAt, rootId, requestToken)
 
       if (!this.activeFilePath()) {
         const preferredFile = findPreferredFile(this.fileTree(), (filePath) => this.isEditableFile(filePath))
@@ -700,6 +720,28 @@ export class FileWorkbenchComponent {
         return next
       })
     }
+  }
+
+  private async refreshActiveFileIfModified(
+    filePath: string | null,
+    knownModifiedAt: string | null,
+    rootId: string,
+    requestToken: number
+  ) {
+    if (!filePath || this.activeFilePath() !== filePath || this.dirty()) {
+      return
+    }
+
+    const latestModifiedAt = fileModifiedFingerprint(findFileTreeNode(this.fileTree(), filePath))
+    if (!knownModifiedAt || !latestModifiedAt || knownModifiedAt === latestModifiedAt) {
+      return
+    }
+
+    if (requestToken !== this.#treeRequestToken || this.rootId() !== rootId) {
+      return
+    }
+
+    await this.loadActiveFile(filePath)
   }
 
   private async loadActiveFile(filePath: string) {
@@ -925,6 +967,74 @@ export class FileWorkbenchComponent {
 
 function fileExtension(filePath: string) {
   return filePath.split('.').pop()?.toLowerCase() ?? ''
+}
+
+function findFileTreeNode(items: FileTreeNode[], filePath?: string | null): FileTreeNode | null {
+  const targetPath = normalizeComparableFilePath(filePath)
+  if (!targetPath) {
+    return null
+  }
+
+  for (const item of items ?? []) {
+    if (normalizeComparableFilePath(item.fullPath || item.filePath) === targetPath) {
+      return item
+    }
+
+    if (Array.isArray(item.children)) {
+      const child = findFileTreeNode(item.children as FileTreeNode[], targetPath)
+      if (child) {
+        return child
+      }
+    }
+  }
+
+  return null
+}
+
+function fileModifiedFingerprint(file: TFile | null | undefined): string | null {
+  if (!hasFileModifiedTimestamp(file)) {
+    return null
+  }
+
+  return normalizeFileTimestamp(file.updatedAt ?? file.createdAt)
+}
+
+function hasFileModifiedTimestamp(file: TFile | null | undefined): file is FileWithModifiedTimestamp {
+  return isFileModifiedTimestamp(file?.updatedAt) || isFileModifiedTimestamp(file?.createdAt)
+}
+
+function isFileModifiedTimestamp(value: FileModifiedTimestamp | null | undefined): value is FileModifiedTimestamp {
+  if (value instanceof Date) {
+    return !Number.isNaN(value.getTime())
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value)
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length > 0
+  }
+
+  return false
+}
+
+function normalizeFileTimestamp(value: FileModifiedTimestamp): string {
+  if (value instanceof Date) {
+    return String(value.getTime())
+  }
+
+  if (typeof value === 'number') {
+    return String(value)
+  }
+
+  const timestamp = value.trim()
+  const time = Date.parse(timestamp)
+  return Number.isNaN(time) ? timestamp : String(time)
+}
+
+function normalizeComparableFilePath(filePath?: string | null) {
+  return (filePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
 }
 
 function normalizeReferencePath(filePath?: string | null) {

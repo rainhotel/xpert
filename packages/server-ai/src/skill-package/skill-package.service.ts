@@ -945,7 +945,8 @@ export class SkillPackageService extends XpertWorkspaceBaseService<SkillPackage>
 			contents,
 			previewText: contents === undefined ? await extractOfficePreviewText(relativePath, buffer) : undefined,
 			size: stat.size,
-			createdAt: stat.mtime
+			createdAt: stat.mtime,
+			updatedAt: stat.mtime
 		}
 	}
 

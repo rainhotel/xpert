@@ -72,6 +72,7 @@ export class VolumeSubtreeClient {
             previewText: isBinaryBuffer(buffer) ? await extractOfficePreviewText(relativePath, buffer) : undefined,
             size: stat.size,
             createdAt: stat.mtime,
+            updatedAt: stat.mtime,
             fileUrl: this.volume.publicUrl(publicPath),
             url: this.volume.publicUrl(publicPath)
         }
