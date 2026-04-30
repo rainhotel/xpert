@@ -73,15 +73,6 @@ type ChatKitReferenceComposerControl = {
         @if (showDetailPanel()) {
           <div class="flex h-full min-h-0 flex-col overflow-hidden">
             <div class="flex flex-col items-stretch justify-start border-b border-divider-regular px-5 pt-4">
-              <div>
-                <div class="text-xs uppercase tracking-[0.24em] text-text-tertiary">
-                  {{ 'PAC.Chat.ClawXpert.Detail' | translate: { Default: 'ClawXpert Detail' } }}
-                </div>
-                <div class="mt-2 text-lg font-semibold text-text-primary">
-                  {{ facade.definition.titleKey | translate: { Default: facade.definition.defaultTitle } }}
-                </div>
-              </div>
-
               <nav
                 z-tab-nav-bar
                 [tabPanel]="tabPanel"

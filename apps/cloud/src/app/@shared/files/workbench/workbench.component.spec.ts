@@ -667,6 +667,31 @@ describe('FileWorkbenchComponent', () => {
     expect(toastr.success).toHaveBeenCalled()
   })
 
+  it('deletes a folder and clears the active preview when it contains the selected file', async () => {
+    const { component, fileDeleter, toastr } = await setup()
+    const docsNode = component.fileTree().find((item) => item.fullPath === 'docs')
+    expect(docsNode).toBeTruthy()
+
+    await component.toggleDirectory(docsNode as FileTreeNode)
+
+    const expandedDocsNode = component.fileTree().find((item) => item.fullPath === 'docs')
+    const guideNode = ((expandedDocsNode?.children as FileTreeNode[]) ?? []).find(
+      (item) => item.fullPath === 'docs/guide.md'
+    )
+    expect(guideNode).toBeTruthy()
+
+    await component.openFile(guideNode as FileTreeNode)
+    component.draftContent.set('# Unsaved guide\n')
+
+    await component.deleteTreeFile(expandedDocsNode as FileTreeNode)
+
+    expect(fileDeleter).toHaveBeenCalledWith('docs')
+    expect(component.fileTree().some((item) => item.fullPath === 'docs')).toBe(false)
+    expect(component.activeFilePath()).toBe('SKILL.md')
+    expect(component.treeActivePath()).toBe('SKILL.md')
+    expect(toastr.success).toHaveBeenCalled()
+  })
+
   it('emits a full-file reference using the current draft content', async () => {
     const { component, fixture } = await setup({ referenceable: true })
     const emitted: unknown[] = []

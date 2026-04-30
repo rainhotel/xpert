@@ -469,26 +469,33 @@ export class FileWorkbenchComponent {
   async deleteTreeFile(item: FileTreeNode) {
     const fileDeleter = this.fileDeleter()
     const filePath = item.fullPath || item.filePath
-    if (!fileDeleter || !filePath || item.hasChildren) {
+    if (!fileDeleter || !filePath) {
       return
     }
 
+    const isDirectory = !!item.hasChildren
     const fileName = fileNameFromPath(filePath)
+    const activeFilePath = this.activeFilePath()
+    const deletesActiveFile = !!activeFilePath && isPathSameOrDescendant(filePath, activeFilePath)
     const information =
-      this.activeFilePath() === filePath && this.dirty()
-        ? this.#translate.instant('PAC.Files.DeleteDirtyFileInfo', {
-            Default: 'This file has unsaved changes. Deleting it will also discard those pending edits.'
+      deletesActiveFile && this.dirty()
+        ? this.#translate.instant(isDirectory ? 'PAC.Files.DeleteDirtyFolderInfo' : 'PAC.Files.DeleteDirtyFileInfo', {
+            Default: isDirectory
+              ? 'A file in this folder has unsaved changes. Deleting the folder will also discard those pending edits.'
+              : 'This file has unsaved changes. Deleting it will also discard those pending edits.'
           })
-        : this.#translate.instant('PAC.Files.DeleteFileInfo', {
-            Default: 'Are you sure you want to delete this file? This action cannot be undone.'
+        : this.#translate.instant(isDirectory ? 'PAC.Files.DeleteFolderInfo' : 'PAC.Files.DeleteFileInfo', {
+            Default: isDirectory
+              ? 'Are you sure you want to delete this folder and all of its contents? This action cannot be undone.'
+              : 'Are you sure you want to delete this file? This action cannot be undone.'
           })
 
     try {
       const deleted = await firstValueFrom(
         this.#confirmDelete(
           {
-            title: this.#translate.instant('PAC.Files.DeleteFileTitle', {
-              Default: 'Delete File'
+            title: this.#translate.instant(isDirectory ? 'PAC.Files.DeleteFolderTitle' : 'PAC.Files.DeleteFileTitle', {
+              Default: isDirectory ? 'Delete Folder' : 'Delete File'
             }),
             value: fileName,
             information
@@ -506,10 +513,10 @@ export class FileWorkbenchComponent {
       }
 
       this.fileTree.update((state) => removeFileTreeNode(state, filePath))
-      if (this.selectedTreeItem()?.path === filePath) {
+      if (isPathSameOrDescendant(filePath, this.selectedTreeItem()?.path)) {
         this.selectedTreeItem.set(null)
       }
-      if (this.activeFilePath() === filePath) {
+      if (deletesActiveFile) {
         this.activeFilePath.set(null)
         this.activeFile.set(null)
         this.setActivePreviewResource({ objectUrl: null, url: null })
@@ -523,15 +530,15 @@ export class FileWorkbenchComponent {
       }
 
       this.#toastr.success(
-        this.#translate.instant('PAC.Files.FileDeleted', {
-          Default: 'File deleted'
+        this.#translate.instant(isDirectory ? 'PAC.Files.FolderDeleted' : 'PAC.Files.FileDeleted', {
+          Default: isDirectory ? 'Folder deleted' : 'File deleted'
         })
       )
     } catch (error) {
       this.#toastr.danger(
         getErrorMessage(error) ||
-          this.#translate.instant('PAC.Files.DeleteFileFailed', {
-            Default: 'Failed to delete file'
+          this.#translate.instant(isDirectory ? 'PAC.Files.DeleteFolderFailed' : 'PAC.Files.DeleteFileFailed', {
+            Default: isDirectory ? 'Failed to delete folder' : 'Failed to delete file'
           })
       )
     }
@@ -1003,7 +1010,7 @@ function hasFileModifiedTimestamp(file: TFile | null | undefined): file is FileW
   return isFileModifiedTimestamp(file?.updatedAt) || isFileModifiedTimestamp(file?.createdAt)
 }
 
-function isFileModifiedTimestamp(value: FileModifiedTimestamp | null | undefined): value is FileModifiedTimestamp {
+function isFileModifiedTimestamp(value: FileModifiedTimestamp | number | string | null | undefined): value is FileModifiedTimestamp {
   if (value instanceof Date) {
     return !Number.isNaN(value.getTime())
   }
@@ -1019,7 +1026,7 @@ function isFileModifiedTimestamp(value: FileModifiedTimestamp | null | undefined
   return false
 }
 
-function normalizeFileTimestamp(value: FileModifiedTimestamp): string {
+function normalizeFileTimestamp(value: FileModifiedTimestamp | number | string): string {
   if (value instanceof Date) {
     return String(value.getTime())
   }
@@ -1035,6 +1042,12 @@ function normalizeFileTimestamp(value: FileModifiedTimestamp): string {
 
 function normalizeComparableFilePath(filePath?: string | null) {
   return (filePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
+}
+
+function isPathSameOrDescendant(parentPath?: string | null, childPath?: string | null) {
+  const parent = normalizeComparableFilePath(parentPath)
+  const child = normalizeComparableFilePath(childPath)
+  return !!parent && !!child && (child === parent || child.startsWith(`${parent}/`))
 }
 
 function normalizeReferencePath(filePath?: string | null) {
