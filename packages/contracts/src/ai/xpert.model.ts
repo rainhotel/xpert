@@ -92,6 +92,14 @@ export type TXpertFeatures = {
 
 export type TXpertFeatureKey = keyof TXpertFeatures
 
+export type TXpertExportedTemplate = {
+  id: string
+  filePath: string
+  exportedAt: string
+  isDraft: boolean
+  includeMemory: boolean
+}
+
 export type TXpert = {
   /**
    * Unique slug identifier, generated from name
@@ -160,6 +168,8 @@ export type TXpert = {
    * Release notes
    */
   releaseNotes?: string
+
+  exportedTemplate?: TXpertExportedTemplate | null
 
   /**
    * Draft on current version

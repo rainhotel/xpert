@@ -7,10 +7,14 @@ import {
 	ISkillMarketFilterGroups,
 	ISkillRepositoryIndex,
 	ISkillRepository,
+	IXpert,
 	IXpertMCPTemplate,
 	LanguagesEnum,
 	WORKSPACE_PUBLIC_SKILL_SOURCE_PROVIDER,
-	TKnowledgePipelineTemplate
+	TAvatar,
+	TKnowledgePipelineTemplate,
+	TXpertExportedTemplate,
+	XpertTypeEnum
 } from '@xpert-ai/contracts'
 import { getErrorMessage, omit, yaml } from '@xpert-ai/server-common'
 import { ConfigService } from '@xpert-ai/server-config'
@@ -31,6 +35,7 @@ import { XpertTemplate } from './xpert-template.entity'
 const builtinTemplatePath = 'packages/server-ai/src/xpert-template'
 const fallbackLanguage = 'en-US'
 const templateDirectoryName = 'xpert-template'
+const exportedXpertTemplateCategory = 'Xpert'
 const templateDirectories = ['templates', 'pipelines', 'skill-packages'] as const
 const templateFiles = [
 	'templates.json',
@@ -44,8 +49,14 @@ const templateFiles = [
 type TXpertTemplateDescriptor = {
 	id: string
 	name?: string
+	type?: XpertTypeEnum | 'project'
+	title?: string
+	description?: string
+	avatar?: TAvatar
+	category?: string
+	copyright?: string | null
+	privacyPolicy?: string | null
 	export_data?: string
-	[key: string]: any
 }
 
 type TXpertTemplateGroup = {
@@ -96,6 +107,13 @@ export type TTemplateSkillBundle = {
 	directoryName: string
 	directoryPath: string
 	sharedSkillId: string
+}
+
+type TExportXpertTemplateInput = {
+	xpert: Pick<IXpert, 'id' | 'name' | 'title' | 'description' | 'avatar' | 'type'>
+	dslYaml: string
+	isDraft: boolean
+	includeMemory: boolean
 }
 
 const DEFAULT_SKILL_MARKET_FILTERS: ISkillMarketFilterGroups = {
@@ -243,6 +261,46 @@ export class XpertTemplateService extends TenantAwareCrudService<XpertTemplate> 
 		return this.readJsonFromFile<TXpertTemplatesCatalog>(templatesFilePath)
 	}
 
+	async saveExportedXpertTemplate(input: TExportXpertTemplateInput): Promise<TXpertExportedTemplate> {
+		const templateId = this.getExportedXpertTemplateId(input.xpert.id)
+		const filePath = this.getExportedXpertTemplateFilePath(templateId)
+		const absoluteFilePath = await this.resolveExternalRelativePath(filePath)
+
+		await fs.promises.mkdir(path.dirname(absoluteFilePath), { recursive: true })
+		await fs.promises.writeFile(absoluteFilePath, input.dslYaml, 'utf8')
+		await this.upsertExportedXpertTemplateCatalog(templateId, input.xpert)
+
+		return {
+			id: templateId,
+			filePath,
+			exportedAt: new Date().toISOString(),
+			isDraft: input.isDraft,
+			includeMemory: input.includeMemory
+		}
+	}
+
+	async deleteExportedXpertTemplate(template?: Pick<TXpertExportedTemplate, 'id' | 'filePath'> | null): Promise<void> {
+		if (!template) {
+			return
+		}
+
+		if (template.filePath?.trim()) {
+			const absoluteFilePath = await this.resolveExternalRelativePath(template.filePath)
+			try {
+				await fs.promises.unlink(absoluteFilePath)
+			} catch (error) {
+				if (!this.isFileNotFoundError(error)) {
+					throw error
+				}
+			}
+		}
+
+		const templateId = template.id?.trim() || this.getTemplateIdFromFilePath(template.filePath)
+		if (templateId) {
+			await this.removeExportedXpertTemplateCatalog(templateId)
+		}
+	}
+
 	async getAll(language: LanguagesEnum) {
 		const templatesData = await this.readTemplatesFile()
 		if (templatesData.templates[language]?.recommendedApps?.length) {
@@ -255,7 +313,7 @@ export class XpertTemplateService extends TenantAwareCrudService<XpertTemplate> 
 		const templatesData = await this.readTemplatesFile()
 		let details = templatesData.details[id]
 		if (details) {
-			return details
+			return this.withTemplateExportData(id, details)
 		}
 
 		const recommendedApps = templatesData.templates[language]?.recommendedApps?.length
@@ -267,10 +325,7 @@ export class XpertTemplateService extends TenantAwareCrudService<XpertTemplate> 
 			throw new Error(`Unable to find template for ${id}`)
 		}
 
-		const templateFilePath = await this.getExternalTemplatePath('templates', `${id}.yaml`)
-		details.export_data = await this.readTextFromFile(templateFilePath, `template '${id}'`)
-
-		return details
+		return this.withTemplateExportData(id, details)
 	}
 
 	async readTemplates<T>(fileName: string, cacheKey: string): Promise<TLocalizedTemplates<T>> {
@@ -583,6 +638,135 @@ export class XpertTemplateService extends TenantAwareCrudService<XpertTemplate> 
 		}
 
 		return resolved
+	}
+
+	private async withTemplateExportData(id: string, descriptor: TXpertTemplateDescriptor) {
+		if (typeof descriptor.export_data === 'string') {
+			return descriptor
+		}
+
+		const templateFilePath = await this.getExternalTemplatePath('templates', `${id}.yaml`)
+		return {
+			...descriptor,
+			export_data: await this.readTextFromFile(templateFilePath, `template '${id}'`)
+		}
+	}
+
+	private async upsertExportedXpertTemplateCatalog(templateId: string, xpert: TExportXpertTemplateInput['xpert']) {
+		const templatesData = await this.readTemplatesFile()
+		const descriptor = this.createExportedXpertTemplateDescriptor(templateId, xpert)
+		const languages = Object.keys(templatesData.templates ?? {})
+
+		if (!languages.length) {
+			templatesData.templates = {
+				[fallbackLanguage]: {
+					categories: [exportedXpertTemplateCategory],
+					recommendedApps: []
+				}
+			}
+			languages.push(fallbackLanguage)
+		}
+
+		for (const language of languages) {
+			const group = templatesData.templates[language] ?? { recommendedApps: [] }
+			templatesData.templates[language] = {
+				...group,
+				categories: this.mergeTemplateCategory(group.categories, exportedXpertTemplateCategory),
+				recommendedApps: [
+					descriptor,
+					...(group.recommendedApps ?? []).filter((item) => item.id !== templateId)
+				]
+			}
+		}
+
+		templatesData.details = templatesData.details ?? {}
+		templatesData.details[templateId] = descriptor
+		await this.writeTemplatesFile(templatesData)
+	}
+
+	private async removeExportedXpertTemplateCatalog(templateId: string) {
+		const templatesData = await this.readTemplatesFile()
+
+		for (const language of Object.keys(templatesData.templates ?? {})) {
+			const group = templatesData.templates[language]
+			if (!group) {
+				continue
+			}
+
+			templatesData.templates[language] = {
+				...group,
+				recommendedApps: (group.recommendedApps ?? []).filter((item) => item.id !== templateId)
+			}
+		}
+
+		if (templatesData.details) {
+			delete templatesData.details[templateId]
+		}
+
+		await this.writeTemplatesFile(templatesData)
+	}
+
+	private createExportedXpertTemplateDescriptor(
+		templateId: string,
+		xpert: TExportXpertTemplateInput['xpert']
+	): TXpertTemplateDescriptor {
+		return {
+			id: templateId,
+			name: xpert.name,
+			type: xpert.type,
+			title: xpert.title || xpert.name,
+			description: xpert.description,
+			avatar: xpert.avatar,
+			category: exportedXpertTemplateCategory,
+			copyright: null,
+			privacyPolicy: null
+		}
+	}
+
+	private mergeTemplateCategory(categories: string[] | undefined, category: string) {
+		const nextCategories = categories ?? []
+		return nextCategories.includes(category) ? nextCategories : [...nextCategories, category]
+	}
+
+	private getExportedXpertTemplateId(xpertId: string) {
+		return `xpert-${xpertId}`
+	}
+
+	private getExportedXpertTemplateFilePath(templateId: string) {
+		return path.posix.join('templates', `${templateId}.yaml`)
+	}
+
+	private getTemplateIdFromFilePath(filePath?: string | null) {
+		if (!filePath?.trim()) {
+			return null
+		}
+
+		const extension = path.extname(filePath)
+		return path.basename(filePath, extension) || null
+	}
+
+	private async resolveExternalRelativePath(relativePath: string) {
+		const normalizedPath = path.normalize(relativePath)
+		if (path.isAbsolute(normalizedPath) || normalizedPath === '..' || normalizedPath.startsWith(`..${path.sep}`)) {
+			throw new Error(`Invalid xpert template path '${relativePath}'`)
+		}
+
+		return path.join(await this.ensureTemplateDirectoryReady(), normalizedPath)
+	}
+
+	private async writeTemplatesFile(value: TXpertTemplatesCatalog) {
+		const templatesFilePath = await this.getExternalTemplatePath('templates.json')
+		try {
+			await fs.promises.writeFile(templatesFilePath, JSON.stringify(value, null, 4), 'utf8')
+		} catch (error) {
+			throw new Error(
+				`Failed to write xpert template file '${templatesFilePath}' (xpert template dir: '${this.getExternalTemplateRoot()}'): ${getErrorMessage(error)}`
+			)
+		}
+	}
+
+	private isFileNotFoundError(value: unknown) {
+		return isObjectValue(value) && Reflect.get(value, 'code') === 'ENOENT'
 	}
 
 	private ensureTemplateDirectoryReady() {
