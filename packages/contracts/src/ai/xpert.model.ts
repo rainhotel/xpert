@@ -563,6 +563,12 @@ export interface TXpertTeamConnection {
    */
   type: 'edge' | TXpertTeamNodeType
 
+  /**
+   * Runtime selection behavior for selectable connections.
+   * For sub-agent connections, omitted means required.
+   */
+  required?: boolean
+
   readonly?: boolean
 }
 

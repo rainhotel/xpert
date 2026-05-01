@@ -11,6 +11,9 @@ export type TRuntimeCapabilitiesSelection = {
 	plugins: {
 		nodeKeys: string[]
 	}
+	subAgents: {
+		nodeKeys: string[]
+	}
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -46,6 +49,7 @@ export function normalizeRuntimeCapabilitiesSelection(value: unknown): TRuntimeC
 
 	const skills = asRecord(record.skills)
 	const plugins = asRecord(record.plugins)
+	const subAgents = asRecord(record.subAgents)
 	const workspaceId = typeof skills?.workspaceId === 'string' ? skills.workspaceId.trim() : ''
 
 	return {
@@ -56,6 +60,9 @@ export function normalizeRuntimeCapabilitiesSelection(value: unknown): TRuntimeC
 		},
 		plugins: {
 			nodeKeys: normalizeStringArray(plugins?.nodeKeys)
+		},
+		subAgents: {
+			nodeKeys: normalizeStringArray(subAgents?.nodeKeys)
 		}
 	}
 }

@@ -1,12 +1,19 @@
 import { Assistant } from '@langchain/langgraph-sdk'
 import {
+    agentLabel,
+    agentUniqueName,
     getAgentMiddlewareNodes,
+    getEnabledTools,
     ICopilotModel,
     IWFNMiddleware,
+    IXpertAgent,
     isRequiredMiddleware,
     IXpert,
     ModelPropertyKey,
-    normalizeMiddlewareProvider
+    normalizeMiddlewareProvider,
+    TXpertGraph,
+    TXpertTeamConnection,
+    TXpertTeamNode
 } from '@xpert-ai/contracts'
 import { ApiKeyOrClientSecretAuthGuard, Public, TransformInterceptor } from '@xpert-ai/server-core'
 import { Body, Controller, Get, Logger, Param, Post, UseGuards, UseInterceptors } from '@nestjs/common'
@@ -17,6 +24,11 @@ import { AssistantBindingService } from '../assistant-binding'
 import { PublishedXpertAccessService } from '../xpert'
 import { SkillPackageService } from '../skill-package'
 import { SKILLS_MIDDLEWARE_NAME } from '../skill-package/types'
+import {
+    getAgentSubAgentConnections,
+    getSubAgentConnectionTargetKey,
+    isRequiredSubAgentConnection
+} from '../shared/agent/sub-agent'
 
 const ASSISTANT_RELATIONS = ['agent', 'agent.copilotModel', 'copilotModel']
 
@@ -121,10 +133,12 @@ export class AssistantsController {
             hasSkillsMiddleware && xpert.workspaceId
                 ? await this.getRuntimeSkills(xpert.workspaceId, defaultSkillSelection)
                 : []
+        const subAgents = agentKey && graph ? collectRuntimeSubAgents(graph, agentKey) : []
 
         return {
             skills,
-            plugins
+            plugins,
+            subAgents
         }
     }
 
@@ -215,6 +229,118 @@ function collectDefaultSkillSelection(
     }
 
     return { skillIds, repositoryDefaults }
+}
+
+function collectRuntimeSubAgents(graph: TXpertGraph, agentKey: string) {
+    const nodeMap = new Map(graph.nodes.map((node) => [node.key, node]))
+
+    return getAgentSubAgentConnections(graph, agentKey)
+        .filter((connection) => !isRequiredSubAgentConnection(connection))
+        .map((connection) => {
+            const targetKey = getSubAgentConnectionTargetKey(connection)
+            const node = nodeMap.get(targetKey)
+            if (node?.type === 'agent') {
+                return transformAgentSubAgentCapability(connection, graph, node as TXpertTeamNode<'agent'>)
+            }
+            if (node?.type === 'xpert') {
+                return transformXpertSubAgentCapability(connection, node as TXpertTeamNode<'xpert'>)
+            }
+            return null
+        })
+        .filter((item): item is NonNullable<typeof item> => !!item)
+}
+
+function transformAgentSubAgentCapability(
+    connection: TXpertTeamConnection,
+    graph: TXpertGraph,
+    node: TXpertTeamNode<'agent'>
+) {
+    const agent = node.entity as IXpertAgent
+    const resources = collectAgentResourceDetails(graph, agent.key)
+    return omitBy(
+        {
+            nodeKey: getSubAgentConnectionTargetKey(connection),
+            type: 'agent',
+            label: agentLabel(agent),
+            name: agentUniqueName(agent),
+            description: agent.description,
+            avatar: agent.avatar,
+            agentKey: agent.key,
+            parameters: agent.parameters,
+            ...resources
+        },
+        isNil
+    )
+}
+
+function transformXpertSubAgentCapability(connection: TXpertTeamConnection, node: TXpertTeamNode<'xpert'>) {
+    const xpert = node.entity as IXpert
+    const nestedGraph = getNestedXpertGraph(node, xpert)
+    const primaryAgentKey = getAssistantPrimaryAgentKey(xpert)
+    const resources =
+        nestedGraph && primaryAgentKey
+            ? collectAgentResourceDetails(nestedGraph, primaryAgentKey)
+            : collectXpertResourceDetails(xpert)
+    const parameters = xpert.agentConfig?.parameters ?? (xpert.agent?.options?.hidden ? [] : xpert.agent?.parameters)
+
+    return omitBy(
+        {
+            nodeKey: getSubAgentConnectionTargetKey(connection),
+            type: 'xpert',
+            label: xpert.title || xpert.name || node.key,
+            name: xpert.slug,
+            description: xpert.description,
+            avatar: xpert.avatar,
+            agentKey: xpert.agent?.key,
+            xpertId: xpert.id,
+            parameters,
+            ...resources
+        },
+        isNil
+    )
+}
+
+function getNestedXpertGraph(node: TXpertTeamNode<'xpert'>, xpert: IXpert): TXpertGraph | null {
+    const nodeGraph = {
+        nodes: node.nodes ?? [],
+        connections: node.connections ?? []
+    }
+    if (nodeGraph.nodes.length) {
+        return nodeGraph
+    }
+
+    return xpert.graph ?? null
+}
+
+function collectAgentResourceDetails(graph: TXpertGraph, agentKey: string) {
+    const nodeMap = new Map(graph.nodes.map((node) => [node.key, node]))
+    const connections = graph.connections?.filter((connection) => connection.from === agentKey) ?? []
+    const toolsetNodes = connections
+        .filter((connection) => connection.type === 'toolset')
+        .map((connection) => nodeMap.get(connection.to))
+        .filter((node): node is TXpertTeamNode<'toolset'> => node?.type === 'toolset')
+    const knowledgeNodes = connections
+        .filter((connection) => connection.type === 'knowledge')
+        .map((connection) => nodeMap.get(connection.to))
+        .filter((node): node is TXpertTeamNode<'knowledge'> => node?.type === 'knowledge')
+
+    return {
+        toolNames: uniqueStrings(toolsetNodes.flatMap((node) => getEnabledTools(node.entity)?.map((tool) => tool.name) ?? [])),
+        toolsetNames: uniqueStrings(toolsetNodes.map((node) => node.entity.name ?? node.key)),
+        knowledgebaseNames: uniqueStrings(knowledgeNodes.map((node) => node.entity.name ?? node.key))
+    }
+}
+
+function collectXpertResourceDetails(xpert: IXpert) {
+    return {
+        toolNames: uniqueStrings((xpert.toolsets ?? []).flatMap((toolset) => getEnabledTools(toolset)?.map((tool) => tool.name) ?? [])),
+        toolsetNames: uniqueStrings((xpert.toolsets ?? []).map((toolset) => toolset.name ?? toolset.id)),
+        knowledgebaseNames: uniqueStrings((xpert.knowledgebases ?? []).map((knowledgebase) => knowledgebase.name ?? knowledgebase.id))
+    }
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+    return Array.from(new Set(values.map((value) => value?.trim() ?? '').filter(Boolean)))
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

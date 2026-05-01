@@ -58,12 +58,124 @@ describe('AssistantsController', () => {
                                     hidden: false
                                 }
                             }
+                        },
+                        {
+                            key: 'required-sub-agent',
+                            type: 'agent',
+                            entity: {
+                                key: 'required-sub-agent',
+                                name: 'required-sub-agent',
+                                title: 'Required Sub Agent',
+                                description: 'Always available'
+                            }
+                        },
+                        {
+                            key: 'optional-sub-agent',
+                            type: 'agent',
+                            entity: {
+                                key: 'optional-sub-agent',
+                                name: 'optional-sub-agent',
+                                title: 'Optional Sub Agent',
+                                description: 'Enabled on demand',
+                                avatar: {
+                                    emoji: {
+                                        id: 'sparkles',
+                                        unified: '2728'
+                                    }
+                                },
+                                parameters: [
+                                    {
+                                        name: 'topic',
+                                        type: 'text'
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            key: 'sub-agent-toolset',
+                            type: 'toolset',
+                            entity: {
+                                id: 'sub-agent-toolset',
+                                name: 'Search Tools',
+                                tools: [
+                                    {
+                                        name: 'search',
+                                        enabled: true
+                                    },
+                                    {
+                                        name: 'disabled_search',
+                                        enabled: false
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            key: 'optional-xpert',
+                            type: 'xpert',
+                            entity: {
+                                id: 'optional-xpert',
+                                slug: 'optional-collaborator',
+                                name: 'Optional Collaborator',
+                                title: 'Optional Collaborator',
+                                description: 'External collaborator',
+                                avatar: {
+                                    url: 'https://example.com/avatar.png'
+                                },
+                                agent: {
+                                    key: 'collaborator-agent',
+                                    parameters: [
+                                        {
+                                            name: 'brief',
+                                            type: 'text'
+                                        }
+                                    ]
+                                },
+                                toolsets: [
+                                    {
+                                        id: 'collaborator-toolset',
+                                        name: 'Collaborator Tools',
+                                        tools: [
+                                            {
+                                                name: 'delegate',
+                                                enabled: true
+                                            }
+                                        ]
+                                    }
+                                ],
+                                knowledgebases: [
+                                    {
+                                        id: 'collaborator-kb',
+                                        name: 'Collaborator Knowledge'
+                                    }
+                                ]
+                            }
                         }
                     ],
                     connections: [
                         { type: 'workflow', from: 'agent-1', to: 'skills-middleware' },
                         { type: 'workflow', from: 'agent-1', to: 'required-middleware' },
-                        { type: 'workflow', from: 'agent-1', to: 'optional-middleware' }
+                        { type: 'workflow', from: 'agent-1', to: 'optional-middleware' },
+                        { key: 'agent-1/required-sub-agent', type: 'agent', from: 'agent-1', to: 'required-sub-agent' },
+                        {
+                            key: 'agent-1/optional-sub-agent',
+                            type: 'agent',
+                            from: 'agent-1',
+                            to: 'optional-sub-agent',
+                            required: false
+                        },
+                        {
+                            key: 'optional-sub-agent/sub-agent-toolset',
+                            type: 'toolset',
+                            from: 'optional-sub-agent',
+                            to: 'sub-agent-toolset'
+                        },
+                        {
+                            key: 'agent-1/optional-xpert',
+                            type: 'xpert',
+                            from: 'agent-1',
+                            to: 'optional-xpert',
+                            required: false
+                        }
                     ]
                 }
             }))
@@ -203,6 +315,52 @@ describe('AssistantsController', () => {
                         }
                     },
                     toolNames: ['visible']
+                }
+            ],
+            subAgents: [
+                {
+                    nodeKey: 'optional-sub-agent',
+                    type: 'agent',
+                    label: 'Optional Sub Agent',
+                    name: 'optional-sub-agent',
+                    description: 'Enabled on demand',
+                    avatar: {
+                        emoji: {
+                            id: 'sparkles',
+                            unified: '2728'
+                        }
+                    },
+                    agentKey: 'optional-sub-agent',
+                    parameters: [
+                        {
+                            name: 'topic',
+                            type: 'text'
+                        }
+                    ],
+                    toolNames: ['search'],
+                    toolsetNames: ['Search Tools'],
+                    knowledgebaseNames: []
+                },
+                {
+                    nodeKey: 'optional-xpert',
+                    type: 'xpert',
+                    label: 'Optional Collaborator',
+                    name: 'optional-collaborator',
+                    description: 'External collaborator',
+                    avatar: {
+                        url: 'https://example.com/avatar.png'
+                    },
+                    agentKey: 'collaborator-agent',
+                    xpertId: 'optional-xpert',
+                    parameters: [
+                        {
+                            name: 'brief',
+                            type: 'text'
+                        }
+                    ],
+                    toolNames: ['delegate'],
+                    toolsetNames: ['Collaborator Tools'],
+                    knowledgebaseNames: ['Collaborator Knowledge']
                 }
             ]
         })

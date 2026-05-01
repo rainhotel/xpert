@@ -115,6 +115,8 @@ import {
     filterDisabledTools,
     getAgentMiddlewares,
     getRuntimeEnabledMiddlewareNodes,
+    getRuntimeEnabledSubAgentConnections,
+    getSubAgentConnectionTargetKey,
     createAgentChannel,
     createPlanModeMiddlewareEntries
 } from '../../../shared'
@@ -379,11 +381,34 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
          * Sub agents: include followers (agents in one xpert team) and collaborators (external xperts: primary agent is entry)
          */
         const subAgents: Record<string, TSubAgent> = {}
-        if (agent.followers?.length) {
-            this.#logger.debug(
-                `\nUse sub agents:\n${agent.followers.map((_, i) => `${i + 1}. ` + _.name + ': ' + _.description).join('\n')}`
+        let runtimeEnabledFollowers = agent.followers ?? []
+        let runtimeEnabledCollaborators = agent.collaborators ?? []
+
+        if (options.runtimeCapabilities?.mode === 'allowlist') {
+            const enabledSubAgentConnections = getRuntimeEnabledSubAgentConnections(graph, agent, {
+                runtimeCapabilities: options.runtimeCapabilities
+            })
+            const enabledFollowerKeys = new Set(
+                enabledSubAgentConnections
+                    .filter((connection) => connection.type === 'agent')
+                    .map((connection) => getSubAgentConnectionTargetKey(connection))
             )
-            for await (const follower of agent.followers) {
+            const enabledCollaboratorIds = new Set(
+                enabledSubAgentConnections
+                    .filter((connection) => connection.type === 'xpert')
+                    .map((connection) => getSubAgentConnectionTargetKey(connection))
+            )
+            runtimeEnabledFollowers = runtimeEnabledFollowers.filter((follower) => enabledFollowerKeys.has(follower.key))
+            runtimeEnabledCollaborators = runtimeEnabledCollaborators.filter(
+                (collaborator) => collaborator.id && enabledCollaboratorIds.has(collaborator.id)
+            )
+        }
+
+        if (runtimeEnabledFollowers.length) {
+            this.#logger.debug(
+                `\nUse sub agents:\n${runtimeEnabledFollowers.map((_, i) => `${i + 1}. ` + _.name + ': ' + _.description).join('\n')}`
+            )
+            for await (const follower of runtimeEnabledFollowers) {
                 if (partners?.includes(follower.key)) {
                     continue
                 }
@@ -414,11 +439,11 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
         }
 
         // Collaborators (external xperts)
-        if (agent.collaborators?.length) {
+        if (runtimeEnabledCollaborators.length) {
             this.#logger.debug(
-                `\nUse xpert collaborators:\n${agent.collaborators.map((_, i) => `${i + 1}. ` + _.name + ': ' + _.description).join('\n')}`
+                `\nUse xpert collaborators:\n${runtimeEnabledCollaborators.map((_, i) => `${i + 1}. ` + _.name + ': ' + _.description).join('\n')}`
             )
-            for await (const collaborator of agent.collaborators) {
+            for await (const collaborator of runtimeEnabledCollaborators) {
                 const subAgent = await XpertCollaborator.build({
                     xpert: collaborator,
                     config: {

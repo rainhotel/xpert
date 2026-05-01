@@ -4171,6 +4171,8 @@
       "AddKnowledgePipeline": "添加知识流水线",
       "Remove": "移除",
       "RemoveConnection": "移除连接",
+      "RequiredSubAgent": "必需子智能体",
+      "RequiredSubAgentTooltip": "运行时始终提供此子智能体，并在 ChatKit 子智能体选择中隐藏。",
       "PleaseEnter": "请输入",
       "Query": "查询",
       "Icon": "图标",

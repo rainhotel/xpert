@@ -161,7 +161,8 @@ describe('getAgentMiddlewares', () => {
                 runtimeCapabilities: {
                     mode: 'allowlist',
                     skills: { ids: [] },
-                    plugins: { nodeKeys: ['middleware-2'] }
+                    plugins: { nodeKeys: ['middleware-2'] },
+                    subAgents: { nodeKeys: [] }
                 }
             }
         )
@@ -216,7 +217,8 @@ describe('getAgentMiddlewares', () => {
                 runtimeCapabilities: {
                     mode: 'allowlist',
                     skills: { ids: [] },
-                    plugins: { nodeKeys: [] }
+                    plugins: { nodeKeys: [] },
+                    subAgents: { nodeKeys: [] }
                 }
             }
         )
@@ -270,7 +272,8 @@ describe('getAgentMiddlewares', () => {
                 runtimeCapabilities: {
                     mode: 'allowlist',
                     skills: { workspaceId: 'workspace-1', ids: ['skill-1'] },
-                    plugins: { nodeKeys: [] }
+                    plugins: { nodeKeys: [] },
+                    subAgents: { nodeKeys: [] }
                 }
             }
         )
