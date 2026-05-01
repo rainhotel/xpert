@@ -510,6 +510,17 @@ export class XpertChatHandler implements ICommandHandler<XpertChatCommand> {
             )
         }
         state ??= normalizeChatState(undefined, input)
+        const conversationRuntimeCapabilities = conversation.options?.runtimeCapabilities
+        if (!hasExplicitRuntimeCapabilities(state) && conversationRuntimeCapabilities) {
+            state = normalizeChatState({
+                ...state,
+                [STATE_VARIABLE_HUMAN]: {
+                    ...(state[STATE_VARIABLE_HUMAN] ?? {}),
+                    runtimeCapabilities: conversationRuntimeCapabilities
+                }
+            })
+            input = state[STATE_VARIABLE_HUMAN] ?? input
+        }
         state = withPreferenceSystemState(state, userPreference)
         const runtimeCapabilities = getRuntimeCapabilitiesFromState(state)
         state = withPreferenceSkillState(
