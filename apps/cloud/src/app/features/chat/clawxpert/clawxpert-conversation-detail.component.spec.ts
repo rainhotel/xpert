@@ -514,7 +514,45 @@ describe('ClawXpertConversationDetailComponent', () => {
     expect(facade.patchActiveConversationStatus).toHaveBeenNthCalledWith(2, 'idle')
   })
 
-  it('appends workspace file references to the chatkit composer without sending a message', async () => {
+  it('appends workspace file path references to the chatkit composer without sending a message', async () => {
+    const setComposerValue = jest.fn().mockResolvedValue(undefined)
+    const focusComposer = jest.fn().mockResolvedValue(undefined)
+    runtimeModule.injectHostedAssistantChatkitControl.mockReturnValueOnce(
+      signal({
+        element: {},
+        setThreadId: jest.fn().mockResolvedValue(undefined),
+        setComposerValue,
+        focusComposer
+      })
+    )
+
+    const fixture = TestBed.createComponent(ClawXpertConversationDetailComponent)
+    await settle(fixture)
+
+    const filesPanel = fixture.debugElement.query(By.directive(ClawXpertConversationFilesComponent))
+    expect(filesPanel).not.toBeNull()
+
+    ;(filesPanel.componentInstance as ClawXpertConversationFilesComponent).referenceRequest.emit({
+      type: 'file_path',
+      path: 'screenshots/home.png'
+    })
+    await settle(fixture)
+
+    expect(setComposerValue).toHaveBeenCalledWith({
+      references: [
+        {
+          type: 'quote',
+          label: 'screenshots/home.png',
+          source: 'Workspace file',
+          text: 'screenshots/home.png'
+        }
+      ],
+      appendReferences: true
+    })
+    expect(focusComposer).toHaveBeenCalled()
+  })
+
+  it('appends selected workspace text references to the chatkit composer without sending a message', async () => {
     const setComposerValue = jest.fn().mockResolvedValue(undefined)
     const focusComposer = jest.fn().mockResolvedValue(undefined)
     runtimeModule.injectHostedAssistantChatkitControl.mockReturnValueOnce(
@@ -603,7 +641,7 @@ describe('ClawXpertConversationDetailComponent', () => {
       'Scope: This reference is the currently inspected element only, not the entire file.'
     )
     expect(reference.text).toContain(
-      "Action target: Apply the user's request to THIS inspected element only; do not change the rest of the file/page unless explicitly asked."
+      'Action target: Apply to THIS inspected element only; do not change the rest of the file/page unless explicitly asked.'
     )
     expect(reference.text).toContain('Source location: index.html')
     expect(reference.text).toContain('- Selector: #hero')
@@ -665,7 +703,7 @@ describe('ClawXpertConversationDetailComponent', () => {
     const reference = setComposerValue.mock.calls.at(-1)?.[0].references[0] as { text: string }
     expect(reference.text).toContain('Reference type: Target inspected page element')
     expect(reference.text).toContain(
-      "Action target: Apply the user's request to THIS inspected element only; do not change the rest of the file/page unless explicitly asked."
+      'Action target: Apply to THIS inspected element only; do not change the rest of the file/page unless explicitly asked.'
     )
     expect(reference.text).toContain('URL: http://localhost:4173/')
     expect(reference.text).toContain('Selector: main > h1')

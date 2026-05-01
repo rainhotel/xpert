@@ -197,6 +197,25 @@ describe('FileViewerComponent', () => {
     expect(fileReferences).toEqual([1])
   })
 
+  it('emits file references for non-readable files without enabling selection references', () => {
+    const fixture = TestBed.createComponent(FileViewerComponent)
+    fixture.componentRef.setInput('filePath', 'screenshots/home.png')
+    fixture.componentRef.setInput('readable', false)
+    fixture.componentRef.setInput('referenceable', true)
+    fixture.detectChanges()
+
+    const component = fixture.componentInstance
+    const fileReferences: number[] = []
+    component.referenceFile.subscribe(() => fileReferences.push(1))
+
+    expect(component.canReferenceFile()).toBe(true)
+    expect(component.editorReferenceable()).toBe(false)
+
+    component.emitFileReference()
+
+    expect(fileReferences).toEqual([1])
+  })
+
   it('emits sidebar toggle clicks and updates the desktop toggle icon', () => {
     const fixture = TestBed.createComponent(FileViewerComponent)
     fixture.componentRef.setInput('sideMenuToggleVisible', true)

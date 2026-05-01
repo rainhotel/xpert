@@ -62,7 +62,14 @@ export type FileWorkbenchCodeReferenceRequest = {
   endLine: number
   language?: string
 }
-export type FileWorkbenchReferenceRequest = FileWorkbenchCodeReferenceRequest | TChatFileElementReference
+export type FileWorkbenchFilePathReferenceRequest = {
+  type: 'file_path'
+  path: string
+}
+export type FileWorkbenchReferenceRequest =
+  | FileWorkbenchFilePathReferenceRequest
+  | FileWorkbenchCodeReferenceRequest
+  | TChatFileElementReference
 
 type FileWorkbenchPreviewResource = {
   objectUrl: string | null
@@ -311,16 +318,14 @@ export class FileWorkbenchComponent {
 
   referenceActiveFile() {
     const filePath = normalizeReferencePath(this.activeFilePath())
-    const text = this.draftContent()
-    if (!this.referenceable() || !filePath || !this.fileReadable() || !text.trim().length) {
-      this.#toastr.warning('PAC.Files.ReferenceUnavailable', {
-        Default: 'This file does not have any text content to reference yet.'
-      })
+    if (!this.referenceable() || !filePath) {
       return
     }
 
-    const lineCount = countTextLines(text)
-    this.referenceRequest.emit(createReferenceRequest(filePath, text, 1, lineCount))
+    this.referenceRequest.emit({
+      type: 'file_path',
+      path: filePath
+    })
   }
 
   referenceSelectedRange(selection: FileEditorSelection) {
@@ -1169,10 +1174,6 @@ function appendDownloadQuery(url: string) {
   const normalizedUrl = new URL(url, window.location.origin)
   normalizedUrl.searchParams.set('download', '1')
   return normalizedUrl.toString()
-}
-
-function countTextLines(content: string) {
-  return content.split(/\r?\n/).length
 }
 
 function createReferenceRequest(

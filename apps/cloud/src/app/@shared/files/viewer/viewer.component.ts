@@ -81,7 +81,7 @@ export class FileViewerComponent {
   )
 
   readonly displayFileName = computed(() => fileNameFromPath(this.filePath()))
-  readonly canReferenceFile = computed(() => this.referenceable() && this.readable() && !!this.filePath())
+  readonly canReferenceFile = computed(() => this.referenceable() && !!this.filePath())
   readonly previewMode = signal<'preview' | 'code'>('preview')
   readonly previewSource = computed(() =>
     toFilePreviewSource({

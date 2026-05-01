@@ -6,7 +6,7 @@ import type { ChatKitQuoteReference, TChatElementReference, TChatFileElementRefe
 import { ZardButtonComponent, ZardIconComponent, ZardTabsImports } from '@xpert-ai/headless-ui'
 import { firstValueFrom } from 'rxjs'
 import { ChatComputerTimelineComponent } from '../../../@shared/chat/computer-timeline/computer-timeline.component'
-import { FileWorkbenchReferenceRequest } from '../../../@shared/files'
+import type { FileWorkbenchFilePathReferenceRequest, FileWorkbenchReferenceRequest } from '../../../@shared/files'
 import { ChatSharedTerminalComponent } from '../../../@shared/chat/terminal/terminal.component'
 import { AssistantCode, AiThreadService, ChatConversationService, IChatConversation, getErrorMessage, injectToastr } from '../../../@core'
 import { injectHostedAssistantChatkitControl } from '../../assistant/assistant-chatkit.runtime'
@@ -489,6 +489,11 @@ export class ClawXpertConversationDetailComponent implements OnDestroy {
       return
     }
 
+    if (isFilePathReferenceRequest(request)) {
+      await this.attachComposerReferences([toFilePathQuoteReference(request)])
+      return
+    }
+
     await this.attachComposerReferences([
       {
         type: 'code',
@@ -717,6 +722,15 @@ function toFileElementQuoteReference(reference: TChatFileElementReference): Chat
   }
 }
 
+function toFilePathQuoteReference(reference: FileWorkbenchFilePathReferenceRequest): ChatKitQuoteReference {
+  return {
+    type: 'quote',
+    label: reference.path,
+    source: 'Workspace file',
+    text: reference.path
+  }
+}
+
 function toPageElementQuoteReference(reference: TChatElementReference): ChatKitQuoteReference {
   const source = reference.pageTitle?.trim() || reference.pageUrl.trim()
 
@@ -772,4 +786,10 @@ function isFileElementReferenceRequest(
   request: FileWorkbenchReferenceRequest
 ): request is TChatFileElementReference {
   return 'type' in request && request.type === 'file_element'
+}
+
+function isFilePathReferenceRequest(
+  request: FileWorkbenchReferenceRequest
+): request is FileWorkbenchFilePathReferenceRequest {
+  return 'type' in request && request.type === 'file_path'
 }

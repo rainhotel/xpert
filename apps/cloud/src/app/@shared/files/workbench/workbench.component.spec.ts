@@ -12,6 +12,7 @@ type TFileDirectory = {
   filePath?: string
   fullPath?: string
   fileType?: string
+  mimeType?: string
   hasChildren?: boolean
   children?: TFileDirectory[] | null
   url?: string
@@ -692,7 +693,7 @@ describe('FileWorkbenchComponent', () => {
     expect(toastr.success).toHaveBeenCalled()
   })
 
-  it('emits a full-file reference using the current draft content', async () => {
+  it('emits a file path reference for the active file', async () => {
     const { component, fixture } = await setup({ referenceable: true })
     const emitted: unknown[] = []
     component.referenceRequest.subscribe((value) => emitted.push(value))
@@ -703,11 +704,43 @@ describe('FileWorkbenchComponent', () => {
 
     expect(emitted).toEqual([
       {
-        path: 'SKILL.md',
-        text: '# Updated skill\nWith unsaved changes\n',
-        startLine: 1,
-        endLine: 3,
-        language: 'markdown'
+        type: 'file_path',
+        path: 'SKILL.md'
+      }
+    ])
+  })
+
+  it('emits a file path reference for non-readable files', async () => {
+    const { component } = await setup({
+      referenceable: true,
+      rootFiles: [
+        {
+          filePath: 'screenshots/home.png',
+          fullPath: 'screenshots/home.png',
+          fileType: 'png',
+          mimeType: 'image/png',
+          hasChildren: false
+        }
+      ],
+      fileContents: {
+        'screenshots/home.png': {
+          filePath: 'screenshots/home.png',
+          fileType: 'png',
+          mimeType: 'image/png',
+          url: 'https://example.com/home.png'
+        }
+      }
+    })
+    const emitted: unknown[] = []
+    component.referenceRequest.subscribe((value) => emitted.push(value))
+
+    component.referenceActiveFile()
+
+    expect(component.fileReadable()).toBe(false)
+    expect(emitted).toEqual([
+      {
+        type: 'file_path',
+        path: 'screenshots/home.png'
       }
     ])
   })
