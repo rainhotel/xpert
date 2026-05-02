@@ -66,6 +66,52 @@ function readTargetElement(value: EventTarget | null): Element | null {
   return value as Element
 }
 
+function ignoreBlockedFrameAccess(callback: () => void) {
+  try {
+    callback()
+  } catch {
+    // A preview iframe can navigate cross-origin before Angular destroys the component.
+  }
+}
+
+function safelyAddFrameWindowEventListener(
+  frameWindow: Window | null,
+  type: string,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | AddEventListenerOptions
+) {
+  ignoreBlockedFrameAccess(() => {
+    frameWindow?.addEventListener(type, listener, options)
+  })
+}
+
+function safelyRemoveFrameWindowEventListener(
+  frameWindow: Window | null,
+  type: string,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | EventListenerOptions
+) {
+  ignoreBlockedFrameAccess(() => {
+    frameWindow?.removeEventListener(type, listener, options)
+  })
+}
+
+function safelyRequestFrameAnimationFrame(frameWindow: Window | null, callback: FrameRequestCallback): number | null {
+  let requestId: number | null = null
+
+  ignoreBlockedFrameAccess(() => {
+    requestId = frameWindow?.requestAnimationFrame(callback) ?? null
+  })
+
+  return requestId
+}
+
+function safelyCancelFrameAnimationFrame(frameWindow: Window | null, requestId: number) {
+  ignoreBlockedFrameAccess(() => {
+    frameWindow?.cancelAnimationFrame(requestId)
+  })
+}
+
 function truncateValue(value: string, limit: number): string {
   return value.length <= limit ? value : `${value.slice(0, Math.max(0, limit - 3))}...`
 }
@@ -675,16 +721,16 @@ export class ClawXpertConversationPreviewComponent implements OnDestroy {
     documentRef.addEventListener('mouseleave', clearHover, true)
     documentRef.addEventListener('click', selectElement, true)
     documentRef.addEventListener('scroll', syncOverlays, true)
-    frameWindow?.addEventListener('scroll', syncOverlays, true)
-    frameWindow?.addEventListener('resize', syncOverlays)
+    safelyAddFrameWindowEventListener(frameWindow, 'scroll', syncOverlays, true)
+    safelyAddFrameWindowEventListener(frameWindow, 'resize', syncOverlays)
 
     this.#frameCleanup = () => {
       documentRef.removeEventListener('mousemove', updateHover, true)
       documentRef.removeEventListener('mouseleave', clearHover, true)
       documentRef.removeEventListener('click', selectElement, true)
       documentRef.removeEventListener('scroll', syncOverlays, true)
-      frameWindow?.removeEventListener('scroll', syncOverlays, true)
-      frameWindow?.removeEventListener('resize', syncOverlays)
+      safelyRemoveFrameWindowEventListener(frameWindow, 'scroll', syncOverlays, true)
+      safelyRemoveFrameWindowEventListener(frameWindow, 'resize', syncOverlays)
     }
   }
 
@@ -761,10 +807,16 @@ export class ClawXpertConversationPreviewComponent implements OnDestroy {
         return
       }
 
-      this.#frameSyncRequestId = frameWindow.requestAnimationFrame(tick)
+      this.#frameSyncRequestId = safelyRequestFrameAnimationFrame(frameWindow, tick)
+      if (this.#frameSyncRequestId === null) {
+        this.#frameSyncWindow = null
+      }
     }
 
-    this.#frameSyncRequestId = frameWindow.requestAnimationFrame(tick)
+    this.#frameSyncRequestId = safelyRequestFrameAnimationFrame(frameWindow, tick)
+    if (this.#frameSyncRequestId === null) {
+      this.#frameSyncWindow = null
+    }
   }
 
   private refreshTrackedOverlays() {
@@ -793,7 +845,7 @@ export class ClawXpertConversationPreviewComponent implements OnDestroy {
 
   private stopOverlaySyncLoop() {
     if (this.#frameSyncRequestId !== null) {
-      this.#frameSyncWindow?.cancelAnimationFrame(this.#frameSyncRequestId)
+      safelyCancelFrameAnimationFrame(this.#frameSyncWindow, this.#frameSyncRequestId)
       this.#frameSyncRequestId = null
     }
 
