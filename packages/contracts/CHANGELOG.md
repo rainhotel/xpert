@@ -1,5 +1,12 @@
 # @xpert-ai/contracts
 
+## 3.9.3
+
+### Patch Changes
+
+- ea234e5: skills & middleware selection
+- 4920c48: Add runtime-selectable sub-agent connection metadata.
+
 ## 3.9.2
 
 ### Patch Changes
