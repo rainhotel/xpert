@@ -73,8 +73,10 @@ import { FindExecutionsByXpertQuery } from '../xpert-agent-execution/queries'
 import {
     XpertChatCommand,
     XpertDelIntegrationCommand,
+    XpertDeleteExportedTemplateCommand,
     XpertExportCommand,
     XpertExportDiagramCommand,
+    XpertExportTemplateCommand,
     XpertImportCommand,
     XpertPublishIntegrationCommand
 } from './commands'
@@ -187,6 +189,31 @@ export class XpertController extends CrudController<Xpert> {
         }
     }
 
+    /**
+     * Imports a new xpert DSL through the managed normalization path so primary
+     * and middleware LLM copilot models are resolved before persistence.
+     */
+    @UseValidationPipe({ transform: true })
+    @Post('import/managed')
+    async importManagedDSL(@Body() dsl: XpertDraftDslDTO) {
+        return await this.commandBus.execute(new XpertImportCommand(dsl, { normalizeCopilotModels: true }))
+    }
+
+    /**
+     * Imports a DSL into an existing xpert through the same managed normalization
+     * path while preserving overwrite-protected fields on the target xpert.
+     */
+    @UseValidationPipe({ transform: true })
+    @Post(':id/import/managed')
+    async importManagedDSLIntoXpert(@Param('id') id: string, @Body() dsl: XpertDraftDslDTO) {
+        return await this.commandBus.execute(
+            new XpertImportCommand(dsl, {
+                targetXpertId: id,
+                normalizeCopilotModels: true
+            })
+        )
+    }
+
     @UseGuards(PermissionGuard)
     @Permissions(AIPermissionsEnum.XPERT_EDIT)
     @Get('select-options')
@@ -229,6 +256,32 @@ export class XpertController extends CrudController<Xpert> {
             return {
                 data: yaml.stringify(instanceToPlain(xpert))
             }
+        } catch (err) {
+            throw new InternalServerErrorException(err.message)
+        }
+    }
+
+    @UseGuards(XpertGuard)
+    @Post(':id/export/template')
+    async exportDSLAsTemplate(
+        @Param('id') xpertId: string,
+        @Query('isDraft') isDraft: string,
+        @Query('includeMemory') includeMemory: string
+    ) {
+        try {
+            return await this.commandBus.execute(
+                new XpertExportTemplateCommand(xpertId, isDraft === 'true', includeMemory === 'true')
+            )
+        } catch (err) {
+            throw new InternalServerErrorException(err.message)
+        }
+    }
+
+    @UseGuards(XpertGuard)
+    @Delete(':id/export/template')
+    async deleteExportedTemplate(@Param('id') xpertId: string) {
+        try {
+            await this.commandBus.execute(new XpertDeleteExportedTemplateCommand(xpertId))
         } catch (err) {
             throw new InternalServerErrorException(err.message)
         }

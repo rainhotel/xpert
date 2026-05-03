@@ -49,6 +49,7 @@ export class XpertWorkflowMiddlewareComponent extends XpertWorkflowBaseComponent
   })
 
   readonly provider = attrModel(this.entity, 'provider')
+  readonly required = attrModel(this.entity, 'required')
   readonly options = attrModel(this.entity, 'options')
   readonly tools = attrModel(this.entity, 'tools')
   readonly _tools = attrModel(this.agentConfig, 'tools')
@@ -72,7 +73,6 @@ export class XpertWorkflowMiddlewareComponent extends XpertWorkflowBaseComponent
       return request.provider ? this.agentAPI.getAgentMiddleware(request.provider, request.options, request.xpertId) : null
     }
   })
-  readonly stateSchema = computed(() => this.#middlewareToolsRes.value()?.stateSchema)
   readonly middlewareTools = computed(() => this.#middlewareToolsRes.value()?.tools ?? [])
   readonly middlewareToolItems = computed(() =>
     this.middlewareTools().map((tool) => ({

@@ -1345,6 +1345,15 @@
       "New": "新建",
       "Files": "文件"
     },
+    "Knowledgebase": {
+      "ModelConfiguration": "模型配置",
+      "ChangeEmbeddingModelDraftNotice": "换模型要重建，保存后会创建待重建模型。",
+      "ModelConfigurationManagedInSettings": "嵌入模型、视觉模型和重排模型请在知识库配置页统一设置。",
+      "OpenConfiguration": "打开配置页",
+      "Status_RebuildRequired": "待重建向量",
+      "Status_Rebuilding": "向量重建中",
+      "Status_RebuildFailed": "向量重建失败"
+    },
     "Certification": {
       "Entry": "认证条目",
       "UpdateCertification": "更新认证",
@@ -1517,7 +1526,14 @@
       "PrivateWorkspace": "私有",
       "TenantSharedWorkspace": "租户共享工作空间",
       "TenantSharedWorkspaceDesc": "该租户下的组织用户可以读取并运行此工作空间中的资源，但不能编辑",
-      "TenantSharedTenantOnly": "只有租户级工作空间可以在租户内共享"
+      "TenantSharedTenantOnly": "只有租户级工作空间可以在租户内共享",
+      "ExportAsTemplate": "导出为模版",
+      "ExportTemplateSuccess": "已导出为模版",
+      "ExportTemplateFailed": "导出模版失败",
+      "ExportedTemplate": "已导出的模版",
+      "DeleteExportedTemplate": "删除模版",
+      "DeleteExportedTemplateConfirm": "删除已导出的模版‘{{value}}’？",
+      "ExportTemplateDeleted": "已删除导出的模版"
     },
     "Feature": {
       "Features": {

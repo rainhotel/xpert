@@ -264,6 +264,50 @@ export class SandboxController {
         }
     }
 
+    @Get('conversations/:conversationId/services/:serviceId')
+    async getManagedService(
+        @Param('conversationId') conversationId: string,
+        @Param('serviceId') serviceId: string,
+        @Query('organizationId') organizationId?: string
+    ): Promise<ISandboxManagedService> {
+        try {
+            return await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.getByConversationId(conversationId, serviceId)
+            )
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
+    @Get('threads/:threadId/services')
+    async listManagedServicesByThread(
+        @Param('threadId') threadId: string,
+        @Query('organizationId') organizationId?: string
+    ): Promise<ISandboxManagedService[]> {
+        try {
+            return await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.listByThreadId(threadId)
+            )
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
+    @Get('threads/:threadId/services/:serviceId')
+    async getManagedServiceByThread(
+        @Param('threadId') threadId: string,
+        @Param('serviceId') serviceId: string,
+        @Query('organizationId') organizationId?: string
+    ): Promise<ISandboxManagedService> {
+        try {
+            return await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.getByThreadId(threadId, serviceId)
+            )
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
     @Post('conversations/:conversationId/services/start')
     async startManagedService(
         @Param('conversationId') conversationId: string,
@@ -273,6 +317,21 @@ export class SandboxController {
         try {
             return await this.organizationScopeService.run(organizationId, () =>
                 this.sandboxManagedServiceService.startByConversationId(conversationId, input)
+            )
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
+    @Post('threads/:threadId/services/start')
+    async startManagedServiceByThread(
+        @Param('threadId') threadId: string,
+        @Body() input: TSandboxManagedServiceStartInput,
+        @Query('organizationId') organizationId?: string
+    ): Promise<ISandboxManagedService> {
+        try {
+            return await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.startByThreadId(threadId, input)
             )
         } catch (error) {
             this.throwManagedServiceHttpError(error)
@@ -296,6 +355,23 @@ export class SandboxController {
         }
     }
 
+    @Get('threads/:threadId/services/:serviceId/logs')
+    async getManagedServiceLogsByThread(
+        @Param('threadId') threadId: string,
+        @Param('serviceId') serviceId: string,
+        @Query('tail') tail?: string,
+        @Query('organizationId') organizationId?: string
+    ): Promise<TSandboxManagedServiceLogs> {
+        try {
+            const parsedTail = tail ? Number.parseInt(tail, 10) : undefined
+            return await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.getLogsByThreadId(threadId, serviceId, parsedTail)
+            )
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
     @Post('conversations/:conversationId/services/:serviceId/stop')
     async stopManagedService(
         @Param('conversationId') conversationId: string,
@@ -305,6 +381,21 @@ export class SandboxController {
         try {
             return await this.organizationScopeService.run(organizationId, () =>
                 this.sandboxManagedServiceService.stopByConversationId(conversationId, serviceId)
+            )
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
+    @Post('threads/:threadId/services/:serviceId/stop')
+    async stopManagedServiceByThread(
+        @Param('threadId') threadId: string,
+        @Param('serviceId') serviceId: string,
+        @Query('organizationId') organizationId?: string
+    ): Promise<ISandboxManagedService> {
+        try {
+            return await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.stopByThreadId(threadId, serviceId)
             )
         } catch (error) {
             this.throwManagedServiceHttpError(error)
@@ -326,6 +417,21 @@ export class SandboxController {
         }
     }
 
+    @Post('threads/:threadId/services/:serviceId/restart')
+    async restartManagedServiceByThread(
+        @Param('threadId') threadId: string,
+        @Param('serviceId') serviceId: string,
+        @Query('organizationId') organizationId?: string
+    ): Promise<ISandboxManagedService> {
+        try {
+            return await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.restartByThreadId(threadId, serviceId)
+            )
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
     @Post('conversations/:conversationId/services/:serviceId/preview-session')
     async createManagedServicePreviewSession(
         @Param('conversationId') conversationId: string,
@@ -337,6 +443,31 @@ export class SandboxController {
         try {
             const service = await this.organizationScopeService.run(organizationId, () =>
                 this.sandboxManagedServiceService.getByConversationId(conversationId, serviceId)
+            )
+            const session = this.sandboxPreviewSessionService.createSession(service, {
+                secure: request.secure || request.headers['x-forwarded-proto'] === 'https'
+            })
+            response.cookie(session.cookie.name, session.cookie.value, session.cookie.options)
+            return {
+                expiresAt: session.expiresAt,
+                previewUrl: session.previewUrl
+            }
+        } catch (error) {
+            this.throwManagedServiceHttpError(error)
+        }
+    }
+
+    @Post('threads/:threadId/services/:serviceId/preview-session')
+    async createManagedServicePreviewSessionByThread(
+        @Param('threadId') threadId: string,
+        @Param('serviceId') serviceId: string,
+        @Query('organizationId') organizationId: string,
+        @Req() request: Request,
+        @Res({ passthrough: true }) response: Response
+    ): Promise<TSandboxManagedServicePreviewSession> {
+        try {
+            const service = await this.organizationScopeService.run(organizationId, () =>
+                this.sandboxManagedServiceService.getByThreadId(threadId, serviceId)
             )
             const session = this.sandboxPreviewSessionService.createSession(service, {
                 secure: request.secure || request.headers['x-forwarded-proto'] === 'https'

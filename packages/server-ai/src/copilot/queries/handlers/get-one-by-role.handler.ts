@@ -10,7 +10,7 @@ export class CopilotOneByRoleHandler implements IQueryHandler<CopilotOneByRoleQu
 	public async execute(command: CopilotOneByRoleQuery): Promise<ICopilot> {
 		const items = await this.service.findAllAvailablesCopilots(command.tenantId, command.organizationId, {
 			role: command.role
-		})
+		}, command.relations)
 		return items.length ? items[0] : null
 	}
 }
