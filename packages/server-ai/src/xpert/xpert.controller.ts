@@ -189,6 +189,31 @@ export class XpertController extends CrudController<Xpert> {
         }
     }
 
+    /**
+     * Imports a new xpert DSL through the managed normalization path so primary
+     * and middleware LLM copilot models are resolved before persistence.
+     */
+    @UseValidationPipe({ transform: true })
+    @Post('import/managed')
+    async importManagedDSL(@Body() dsl: XpertDraftDslDTO) {
+        return await this.commandBus.execute(new XpertImportCommand(dsl, { normalizeCopilotModels: true }))
+    }
+
+    /**
+     * Imports a DSL into an existing xpert through the same managed normalization
+     * path while preserving overwrite-protected fields on the target xpert.
+     */
+    @UseValidationPipe({ transform: true })
+    @Post(':id/import/managed')
+    async importManagedDSLIntoXpert(@Param('id') id: string, @Body() dsl: XpertDraftDslDTO) {
+        return await this.commandBus.execute(
+            new XpertImportCommand(dsl, {
+                targetXpertId: id,
+                normalizeCopilotModels: true
+            })
+        )
+    }
+
     @UseGuards(PermissionGuard)
     @Permissions(AIPermissionsEnum.XPERT_EDIT)
     @Get('select-options')
