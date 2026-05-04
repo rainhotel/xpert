@@ -1,6 +1,73 @@
 import { createHumanMessage } from './message'
+import { ResolvePromptWorkflowInvocationQuery } from './queries/resolve-prompt-workflow-invocation.query'
 
 describe('createHumanMessage', () => {
+    it('expands raw prompt workflow invocations before creating the agent human message', async () => {
+        const queryBus = {
+            execute: jest.fn().mockResolvedValue({
+                input: {
+                    input: 'Review this: src/app.ts'
+                }
+            })
+        }
+
+        const message = await createHumanMessage(
+            {
+                execute: jest.fn()
+            } as any,
+            queryBus as any,
+            {
+                human: {
+                    input: '/review src/app.ts',
+                    runtimeCapabilities: {
+                        mode: 'allowlist',
+                        skills: { workspaceId: 'workspace-1', ids: [] },
+                        plugins: { nodeKeys: [] },
+                        subAgents: { nodeKeys: [] }
+                    }
+                }
+            },
+            undefined,
+            {
+                xpert: {
+                    id: 'xpert-1',
+                    workspaceId: 'workspace-1'
+                }
+            }
+        )
+
+        expect(message.content).toBe('Review this: src/app.ts')
+        expect(queryBus.execute).toHaveBeenCalledWith(expect.any(ResolvePromptWorkflowInvocationQuery))
+    })
+
+    it('does not resolve prompt workflows for normal input even when xpert context is available', async () => {
+        const queryBus = {
+            execute: jest.fn()
+        }
+
+        const message = await createHumanMessage(
+            {
+                execute: jest.fn()
+            } as any,
+            queryBus as any,
+            {
+                human: {
+                    input: 'Please review src/app.ts'
+                }
+            },
+            undefined,
+            {
+                xpert: {
+                    id: 'xpert-1',
+                    workspaceId: 'workspace-1'
+                }
+            }
+        )
+
+        expect(message.content).toBe('Please review src/app.ts')
+        expect(queryBus.execute).not.toHaveBeenCalled()
+    })
+
     it('turns image references into image_url content parts and preserves text fallback', async () => {
         const commandBus = {
             execute: jest.fn()
@@ -42,6 +109,7 @@ describe('createHumanMessage', () => {
             }
         ])
         expect((message.content as Array<{ type: string; text?: string }>)[1].text).toContain('[Image] diagram.png')
+        expect(queryBus.execute).not.toHaveBeenCalled()
     })
 
     it('still creates multimodal content when the human input only contains image references', async () => {

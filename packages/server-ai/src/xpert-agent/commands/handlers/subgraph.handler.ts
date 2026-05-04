@@ -31,6 +31,7 @@ import {
     channelName,
     ChatMessageEventTypeEnum,
     ChatMessageTypeEnum,
+    figureOutXpert,
     findStartNodes,
     getCurrentGraph,
     getWorkflowTriggers,
@@ -148,6 +149,7 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
 
     public async execute(command: XpertAgentSubgraphCommand): Promise<TAgentSubgraphResult> {
         const { agentKeyOrName, xpert, options } = command
+        const promptWorkflowXpert = figureOutXpert(xpert as IXpert, options?.isDraft)
         const {
             isStart,
             execution,
@@ -1006,7 +1008,8 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
                             this.commandBus,
                             this.queryBus,
                             state,
-                            agent.options?.attachment ?? agent.options?.vision
+                            agent.options?.attachment ?? agent.options?.vision,
+                            { xpert: promptWorkflowXpert }
                         )
                     )
                 }
@@ -1226,6 +1229,7 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
                         new CreateNodeConsumePendingSteerFollowUpsCommand({
                             agentKey,
                             agentChannel,
+                            xpert: promptWorkflowXpert,
                             subscriber,
                             attachmentOptions: agent.options?.attachment ?? agent.options?.vision
                         })

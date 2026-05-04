@@ -1,0 +1,347 @@
+import { RuntimeCommandService } from './runtime-command.service'
+import type { RuntimeSlashCommand } from './runtime-command.guards'
+
+function runtimeCommand(name: string, source: RuntimeSlashCommand['source']): RuntimeSlashCommand {
+    return {
+        name,
+        label: name,
+        action: {
+            type: 'submit_prompt',
+            template: `Run ${name}`
+        },
+        source
+    }
+}
+
+describe('RuntimeCommandService', () => {
+    it('normalizes valid skill runtime commands and injects the owning skill capability', () => {
+        const service = new RuntimeCommandService()
+
+        expect(
+            service.normalizeSkillRuntimeSlashCommands(
+                {
+                    id: 'skill-review',
+                    metadata: {
+                        icon: {
+                            type: 'svg',
+                            value: '<svg viewBox="0 0 16 16"><path d="M2 2h12v12H2z" /></svg>'
+                        },
+                        tags: ['code'],
+                        commands: [
+                            {
+                                name: 'review',
+                                label: 'Review',
+                                description: 'Review selected files',
+                                category: 'quality',
+                                aliases: ['audit', 'check', 'audit'],
+                                argsHint: '<path>',
+                                action: {
+                                    type: 'submit_prompt',
+                                    template: 'Review {{args}}'
+                                }
+                            }
+                        ]
+                    }
+                },
+                { workspaceId: 'workspace-1', label: 'Review Skill' }
+            )
+        ).toEqual([
+            {
+                name: 'review',
+                label: 'Review',
+                description: 'Review selected files',
+                icon: {
+                    type: 'svg',
+                    value: '<svg viewBox="0 0 16 16"><path d="M2 2h12v12H2z" /></svg>'
+                },
+                category: 'quality',
+                aliases: ['audit', 'check'],
+                argsHint: '<path>',
+                kind: 'prompt_workflow',
+                workflow: {
+                    type: 'prompt_workflow',
+                    name: 'review',
+                    label: 'Review',
+                    description: 'Review selected files',
+                    tags: ['code']
+                },
+                meta: {
+                    icon: {
+                        type: 'svg',
+                        value: '<svg viewBox="0 0 16 16"><path d="M2 2h12v12H2z" /></svg>'
+                    }
+                },
+                action: {
+                    type: 'submit_prompt',
+                    template: 'Review {{args}}',
+                    runtimeCapabilities: {
+                        mode: 'allowlist',
+                        skills: {
+                            workspaceId: 'workspace-1',
+                            ids: ['skill-review']
+                        },
+                        plugins: {
+                            nodeKeys: []
+                        },
+                        subAgents: {
+                            nodeKeys: []
+                        }
+                    }
+                },
+                source: {
+                    type: 'skill',
+                    skillId: 'skill-review',
+                    workspaceId: 'workspace-1',
+                    label: 'Review Skill'
+                }
+            }
+            ])
+    })
+
+    it('defaults skill submit_prompt commands to prompt workflow commands', () => {
+        const service = new RuntimeCommandService()
+
+        expect(
+            service.normalizeSkillRuntimeSlashCommands(
+                {
+                    id: 'skill-debug',
+                    metadata: {
+                        commands: [
+                            {
+                                name: 'debug',
+                                label: 'Debug',
+                                description: 'Debug failing code',
+                                action: {
+                                    type: 'submit_prompt',
+                                    template: 'Debug {{args}}'
+                                }
+                            }
+                        ]
+                    }
+                },
+                { workspaceId: 'workspace-1', label: 'Debug Skill' }
+            )
+        ).toEqual([
+            expect.objectContaining({
+                name: 'debug',
+                category: 'prompt_workflow',
+                argsHint: '<args>',
+                kind: 'prompt_workflow',
+                workflow: {
+                    type: 'prompt_workflow',
+                    name: 'debug',
+                    label: 'Debug',
+                    description: 'Debug failing code'
+                },
+                action: expect.objectContaining({
+                    type: 'submit_prompt',
+                    template: 'Debug {{args}}'
+                })
+            })
+        ])
+    })
+
+    it('filters invalid names, empty templates, unknown actions, and unsafe capability selection', () => {
+        const service = new RuntimeCommandService()
+
+        expect(
+            service.normalizeSkillRuntimeSlashCommands(
+                {
+                    id: 'skill-review',
+                    metadata: {
+                        commands: [
+                            {
+                                name: 'Invalid Name',
+                                action: {
+                                    type: 'submit_prompt',
+                                    template: 'ignore'
+                                }
+                            },
+                            {
+                                name: 'empty',
+                                action: {
+                                    type: 'submit_prompt',
+                                    template: ''
+                                }
+                            },
+                            {
+                                name: 'unknown',
+                                action: {
+                                    type: 'shell',
+                                    template: 'ignore'
+                                }
+                            },
+                            {
+                                name: 'plugin',
+                                action: {
+                                    type: 'select_capability',
+                                    capability: {
+                                        type: 'plugin',
+                                        id: 'plugin-search'
+                                    }
+                                }
+                            },
+                            {
+                                name: 'self',
+                                action: {
+                                    type: 'select_capability',
+                                    capability: {
+                                        type: 'skill',
+                                        id: 'skill-review'
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                { workspaceId: 'workspace-1', label: 'Review Skill' }
+            )
+        ).toEqual([
+            expect.objectContaining({
+                name: 'self',
+                action: {
+                    type: 'select_capability',
+                    capability: {
+                        type: 'skill',
+                        id: 'skill-review'
+                    }
+                }
+            })
+        ])
+    })
+
+    it('normalizes workspace prompt workflow commands and filters runtime capabilities to available ids', () => {
+        const service = new RuntimeCommandService()
+
+        expect(
+            service.normalizePromptWorkflowRuntimeSlashCommands(
+                [
+                    {
+                        sourceType: 'workspace_prompt_workflow',
+                        workflowId: 'workflow-review',
+                        workspaceId: 'workspace-1',
+                        name: 'review',
+                        label: 'Review',
+                        description: 'Review selected files',
+                        template: 'Review {{args}}',
+                        runtimeCapabilities: {
+                            mode: 'allowlist',
+                            skills: {
+                                workspaceId: 'workspace-1',
+                                ids: ['skill-review', 'missing-skill']
+                            },
+                            plugins: {
+                                nodeKeys: ['plugin-search', 'missing-plugin']
+                            },
+                            subAgents: {
+                                nodeKeys: ['agent-1', 'missing-agent']
+                            }
+                        }
+                    }
+                ],
+                {
+                    sourceType: 'workspace_prompt_workflow',
+                    workspaceId: 'workspace-1',
+                    label: 'Assistant',
+                    allowList: {
+                        workspaceId: 'workspace-1',
+                        skillIds: ['skill-review'],
+                        pluginNodeKeys: ['plugin-search'],
+                        subAgentNodeKeys: ['agent-1']
+                    }
+                }
+            )
+        ).toEqual([
+            expect.objectContaining({
+                name: 'review',
+                category: 'prompt_workflow',
+                argsHint: '<args>',
+                kind: 'prompt_workflow',
+                action: {
+                    type: 'insert_invocation',
+                    template: '/review ',
+                    runtimeCapabilities: {
+                        mode: 'allowlist',
+                        skills: {
+                            workspaceId: 'workspace-1',
+                            ids: ['skill-review']
+                        },
+                        plugins: {
+                            nodeKeys: ['plugin-search']
+                        },
+                        subAgents: {
+                            nodeKeys: ['agent-1']
+                        }
+                    }
+                },
+                source: {
+                    type: 'workspace_prompt_workflow',
+                    workflowId: 'workflow-review',
+                    workspaceId: 'workspace-1',
+                    label: 'Assistant'
+                }
+            })
+        ])
+    })
+
+    it('keeps xpert-local prompt workflow commands as submitted prompts', () => {
+        const service = new RuntimeCommandService()
+
+        expect(
+            service.normalizePromptWorkflowRuntimeSlashCommands(
+                [
+                    {
+                        sourceType: 'xpert',
+                        xpertId: 'xpert-1',
+                        workflowId: 'workflow-review',
+                        name: 'review',
+                        label: 'Review',
+                        template: 'Review {{args}}'
+                    }
+                ],
+                {
+                    sourceType: 'xpert',
+                    workspaceId: 'workspace-1',
+                    label: 'Assistant'
+                }
+            )
+        ).toEqual([
+            expect.objectContaining({
+                name: 'review',
+                action: {
+                    type: 'submit_prompt',
+                    template: 'Review {{args}}'
+                },
+                source: {
+                    type: 'xpert',
+                    xpertId: 'xpert-1',
+                    label: 'Assistant'
+                }
+            })
+        ])
+    })
+
+    it('merges runtime commands by xpert, preferred skill, workspace, then skill priority and hides built-in conflicts', () => {
+        const service = new RuntimeCommandService()
+
+        expect(
+            service.mergeRuntimeSlashCommands([
+                [runtimeCommand('review', { type: 'xpert' })],
+                [runtimeCommand('explain', { type: 'skill', skillId: 'skill-review', workspaceId: 'workspace-1', label: 'Review Skill' })],
+                [
+                    runtimeCommand('review', { type: 'workspace_prompt_workflow' }),
+                    runtimeCommand('explain', { type: 'workspace_prompt_workflow' })
+                ],
+                [
+                    runtimeCommand('plan', { type: 'skill', skillId: 'skill-plan', workspaceId: 'workspace-1', label: 'Plan Skill' }),
+                    runtimeCommand('explain', { type: 'skill', skillId: 'skill-explain', workspaceId: 'workspace-1', label: 'Explain Skill' }),
+                    runtimeCommand('test', { type: 'skill', skillId: 'skill-test', workspaceId: 'workspace-1', label: 'Test Skill' })
+                ]
+            ])
+        ).toEqual([
+            runtimeCommand('review', { type: 'xpert' }),
+            runtimeCommand('explain', { type: 'skill', skillId: 'skill-review', workspaceId: 'workspace-1', label: 'Review Skill' }),
+            runtimeCommand('test', { type: 'skill', skillId: 'skill-test', workspaceId: 'workspace-1', label: 'Test Skill' })
+        ])
+    })
+})

@@ -13,6 +13,7 @@ This repo uses NestJS + TypeORM on the server and Angular 17 (standalone, signal
 - Never use `as any`.
 - Never cast `unknown` or broad values to `Record<string, unknown>`, and never introduce generic `asRecord()`-style helpers to bypass type checking.
 - Narrow `unknown` values with explicit type guards and property-level structural checks; only cast to a specific interface after those checks.
+- Keep property-level readers and structural checks at trust boundaries only, such as API bodies, external package metadata, and JSON columns read from persistence. After a boundary parser/type guard returns a concrete shared-contract type, downstream services should use typed fields directly instead of continuing to call `read*()` helpers. If a service still needs property-level readers, move that parsing earlier or introduce a typed boundary parser first.
 - Never guess types, categories, or payload meaning from names, display text, localized copy, sample data, or incidental field combinations. Logic that depends on machine-readable distinctions must use explicit typed fields defined in shared contracts, such as discriminated unions or a stable `type`.
 - If the required discriminator or type is missing, do not invent one locally and do not hard-code heuristic detection. Add the type to the shared contract first, or pause and confirm the new type before implementing downstream filtering, routing, rendering, or business logic.
 

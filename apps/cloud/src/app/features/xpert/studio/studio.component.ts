@@ -274,7 +274,7 @@ export class XpertStudioComponent {
   // Agent Execution Running status
   readonly executions = this.executionService.executions
   readonly toolMessages = this.executionService.toolMessages
-  readonly sidePanel = model<'preview' | 'variables'>()
+  readonly sidePanel = model<'preview' | 'variables' | 'environments' | 'commands'>()
   readonly showFeatures = model(false)
 
   readonly runningToolsets = computed<Array<{ key: string; agentKey: string; running: boolean }>>(

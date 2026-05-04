@@ -14,6 +14,7 @@ import { IIntegration } from '../integration.model'
 import { TChatFrom } from './chat.model'
 import { IWorkflowNode, TVariableAssigner, TWFCase, VariableOperationEnum } from './xpert-workflow.model'
 import { IEnvironment } from './environment.model'
+import { TXpertCommandProfile } from './prompt-workflow.model'
 
 export type ToolCall = LToolCall
 
@@ -155,6 +156,7 @@ export type TXpert = {
   memory?: TLongTermMemory
 
   features?: TXpertFeatures
+  commandProfile?: TXpertCommandProfile
 
   /**
    * Version of role: '1' '2' '2.1' '2.2'...

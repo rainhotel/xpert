@@ -36,6 +36,7 @@ import {
   TChatRequest,
   TDeleteResult,
   TXpertExportedTemplate,
+  TXpertCommandProfile,
   TWorkflowVarGroup,
   TXpertTeamDraft,
   XpertTypeEnum
@@ -108,6 +109,23 @@ export class XpertAPIService extends XpertWorkspaceBaseCrudService<IXpert> {
 
   saveDraft(id: string, draft: TXpertTeamDraft) {
     return this.httpClient.post<TXpertTeamDraft>(this.apiBaseUrl + `/${id}/draft`, draft)
+  }
+
+  getCommandProfile(id: string) {
+    return this.httpClient.get<{
+      profile: TXpertCommandProfile
+      runtime: {
+        hasProfile: boolean
+        xpertCommands: unknown[]
+        workspaceCommands: unknown[]
+        preferredSkillEntries?: unknown[]
+        skillEntries: unknown[]
+      }
+    }>(this.apiBaseUrl + `/${id}/commands`)
+  }
+
+  updateCommandProfile(id: string, profile: TXpertCommandProfile) {
+    return this.httpClient.put<TXpertTeamDraft>(this.apiBaseUrl + `/${id}/commands`, profile)
   }
 
   upadteDraft(id: string, draft: TXpertTeamDraft) {

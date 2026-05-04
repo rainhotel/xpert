@@ -15,7 +15,11 @@ jest.mock('@xpert-ai/server-core', () => ({
     CrudController: class {
         constructor() {}
     },
-    FileStorage: class {},
+    FileStorage: class {
+        storage() {
+            return {}
+        }
+    },
     OptionParams: class {},
     PaginationParams: class {},
     ParseJsonPipe: class {},
@@ -29,9 +33,12 @@ jest.mock('@xpert-ai/server-core', () => ({
         currentUserId: jest.fn(),
         getOrganizationId: jest.fn()
     },
+    TenantBaseEntity: class {},
+    TenantOrganizationAwareCrudService: class {},
+    TenantOrganizationBaseEntity: class {},
     TimeZone: () => () => undefined,
     TransformInterceptor: class {},
-    UploadedFileStorage: class {},
+    UploadedFileStorage: () => () => undefined,
     UseValidationPipe: () => () => undefined,
     UserService: class {},
     UUIDValidationPipe: class {}
@@ -52,6 +59,59 @@ jest.mock('./guards/xpert.guard', () => ({
 
 jest.mock('../xpert-workspace/', () => ({
     WorkspaceGuard: class {}
+}))
+
+jest.mock('./xpert.service', () => ({
+    XpertService: class {}
+}))
+
+jest.mock('../copilot-store/copilot-store.service', () => ({
+    CopilotStoreService: class {}
+}))
+
+jest.mock('../environment', () => ({
+    EnvironmentService: class {}
+}))
+
+jest.mock('../prompt-workflow', () => ({
+    PromptWorkflowService: class {}
+}))
+
+jest.mock('../core/entities/internal', () => ({
+    ChatConversation: class {},
+    XpertAgentExecution: class {}
+}))
+
+jest.mock('./dto', () => ({
+    XpertDraftDslDTO: class {},
+    XpertPublicDTO: class {
+        constructor(value: unknown) {
+            Object.assign(this, value)
+        }
+    }
+}))
+
+jest.mock('../chat-conversation', () => ({
+    ChatConversationDeleteCommand: class {},
+    ChatConversationLogsQuery: class {},
+    ChatConversationUpsertCommand: class {},
+    FindChatConversationQuery: class {},
+    GetChatConversationQuery: class {},
+    StatisticsAverageSessionInteractionsQuery: class {},
+    StatisticsDailyConvQuery: class {},
+    StatisticsDailyEndUsersQuery: class {},
+    StatisticsDailyMessagesQuery: class {},
+    StatisticsTokenCostQuery: class {},
+    StatisticsTokensPerSecondQuery: class {},
+    StatisticsUserSatisfactionRateQuery: class {}
+}))
+
+jest.mock('../chat-conversation/dto', () => ({
+    ChatConversationPublicDTO: class {
+        constructor(value: unknown) {
+            Object.assign(this, value)
+        }
+    }
 }))
 
 type EnqueueOptions = TChatOptions & {
@@ -88,6 +148,7 @@ describe('XpertController', () => {
             environmentService as unknown as EnvironmentService,
             {} as unknown as UserService,
             {} as unknown as I18nService,
+            {} as any,
             { execute: jest.fn() } as unknown as CommandBus,
             { execute: jest.fn() } as unknown as QueryBus
         )

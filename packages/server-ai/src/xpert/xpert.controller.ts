@@ -11,6 +11,7 @@ import {
     TMemoryQA,
     TMemoryUserProfile,
     TChatRequest,
+    TXpertCommandProfile,
     TXpertTeamDraft,
     xpertLabel
 } from '@xpert-ai/contracts'
@@ -117,6 +118,7 @@ import { XpertDeleteCommand } from './commands/delete.command'
 import { EnqueueAgentChatMessageCommand } from '../handoff/commands'
 import { XPERT_HANDOFF_QUEUE } from '../handoff/constants'
 import { AGENT_CHAT_MESSAGE_TYPE } from '../handoff/local-sync-task.service'
+import { PromptWorkflowService } from '../prompt-workflow'
 
 @ApiTags('Xpert')
 @ApiBearerAuth()
@@ -130,6 +132,7 @@ export class XpertController extends CrudController<Xpert> {
         private readonly environmentService: EnvironmentService,
         private readonly userService: UserService,
         private readonly i18n: I18nService,
+        private readonly promptWorkflowService: PromptWorkflowService,
         private readonly commandBus: CommandBus,
         private readonly queryBus: QueryBus
     ) {
@@ -319,6 +322,33 @@ export class XpertController extends CrudController<Xpert> {
         draft.savedAt = new Date()
         // Save draft
         return await this.service.updateDraft(id, draft)
+    }
+
+    @UseGuards(XpertGuard)
+    @Get(':id/commands')
+    async getCommandProfile(@Param('id') id: string) {
+        const xpert = await this.service.findOne(id)
+        const sourceProfile = xpert.draft?.team?.commandProfile ?? xpert.commandProfile
+        const profile = sourceProfile ?? { version: 1, commands: [] }
+        return {
+            profile,
+            runtime: await this.promptWorkflowService.resolveRuntimeCommandProfile({
+                ...xpert,
+                commandProfile: sourceProfile
+            })
+        }
+    }
+
+    @UseGuards(XpertGuard)
+    @Put(':id/commands')
+    async updateCommandProfile(@Param('id') id: string, @Body() body: TXpertCommandProfile) {
+        const xpert = await this.service.findOne(id)
+        const profile = await this.promptWorkflowService.validateCommandProfile(xpert.workspaceId, body)
+        return this.service.updateDraft(id, {
+            team: {
+                commandProfile: profile
+            }
+        } as Partial<TXpertTeamDraft>)
     }
 
     @UseGuards(XpertGuard)

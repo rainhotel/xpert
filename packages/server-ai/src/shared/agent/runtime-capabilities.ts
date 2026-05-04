@@ -67,6 +67,31 @@ export function normalizeRuntimeCapabilitiesSelection(value: unknown): TRuntimeC
 	}
 }
 
+export function mergeRuntimeCapabilitiesSelection(
+	current: TRuntimeCapabilitiesSelection | null | undefined,
+	next: TRuntimeCapabilitiesSelection | null | undefined
+): TRuntimeCapabilitiesSelection | null {
+	if (!current && !next) {
+		return null
+	}
+
+	return {
+		mode: 'allowlist',
+		skills: {
+			...(current?.skills.workspaceId || next?.skills.workspaceId
+				? { workspaceId: current?.skills.workspaceId ?? next?.skills.workspaceId }
+				: {}),
+			ids: mergeStringLists(current?.skills.ids, next?.skills.ids)
+		},
+		plugins: {
+			nodeKeys: mergeStringLists(current?.plugins.nodeKeys, next?.plugins.nodeKeys)
+		},
+		subAgents: {
+			nodeKeys: mergeStringLists(current?.subAgents.nodeKeys, next?.subAgents.nodeKeys)
+		}
+	}
+}
+
 export function getRuntimeCapabilitiesFromState(value: unknown): TRuntimeCapabilitiesSelection | null {
 	const state = asRecord(value)
 	const human = asRecord(state?.[STATE_VARIABLE_HUMAN])
@@ -77,4 +102,17 @@ export function hasExplicitRuntimeCapabilities(value: unknown): boolean {
 	const state = asRecord(value)
 	const human = asRecord(state?.[STATE_VARIABLE_HUMAN])
 	return normalizeRuntimeCapabilitiesSelection(human?.[RUNTIME_CAPABILITIES_HUMAN_INPUT_KEY]) !== null
+}
+
+function mergeStringLists(left: string[] | undefined, right: string[] | undefined): string[] {
+	const seen = new Set<string>()
+	const result: string[] = []
+	for (const value of [...(left ?? []), ...(right ?? [])]) {
+		if (!value || seen.has(value)) {
+			continue
+		}
+		seen.add(value)
+		result.push(value)
+	}
+	return result
 }

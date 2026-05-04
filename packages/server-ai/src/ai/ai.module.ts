@@ -27,6 +27,8 @@ import { EnvironmentModule } from '../environment'
 import { AssistantBindingModule } from '../assistant-binding'
 import { XpertAgentModule } from '../xpert-agent'
 import { SkillPackageModule } from '../skill-package'
+import { RuntimeCommandService } from './runtime-command.service'
+import { PromptWorkflowModule } from '../prompt-workflow'
 
 @Module({
 	imports: [
@@ -49,6 +51,7 @@ import { SkillPackageModule } from '../skill-package'
 		forwardRef(() => XpertModule),
 		forwardRef(() => XpertAgentModule),
 		forwardRef(() => SkillPackageModule),
+		forwardRef(() => PromptWorkflowModule),
 		forwardRef(() => AssistantBindingModule),
 		forwardRef(() => EnvironmentModule),
 		forwardRef(() => ChatConversationModule),
@@ -65,6 +68,6 @@ import { SkillPackageModule } from '../skill-package'
 		ConversationsController,
 		StoreController
 	],
-	providers: [AiService, RedisSseStreamService, ...CommandHandlers, ...QueryHandlers]
+	providers: [AiService, RedisSseStreamService, RuntimeCommandService, ...CommandHandlers, ...QueryHandlers]
 })
 export class AIModule {}

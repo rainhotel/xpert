@@ -69,7 +69,7 @@ describe('XpertAssistantFacade', () => {
     const router = {
       url,
       events: routerEvents$.asObservable(),
-      navigate: jest.fn()
+      navigate: jest.fn().mockResolvedValue(true)
     }
 
     TestBed.resetTestingModule()
@@ -178,5 +178,73 @@ describe('XpertAssistantFacade', () => {
     const { facade } = createFacade('/xpert/x/xpert-1/agents')
 
     expect(facade.assistantId()).toBeNull()
+  })
+
+  it('navigates to prompt workflows and emits refresh after authoring tool effects', async () => {
+    const { facade, router } = createFacade('/xpert/w/workspace-1')
+
+    facade.setOpen(true)
+    facade.handleEffect({
+      name: 'refresh_prompt_workflows',
+      data: {
+        workspaceId: 'workspace-1',
+        workflowId: 'workflow-1',
+        key: 'review',
+        operation: 'updated'
+      }
+    } as any)
+
+    expect(router.navigate).toHaveBeenCalledWith(['/xpert/w', 'workspace-1', 'prompt-workflows'])
+    await router.navigate.mock.results[0].value
+    await Promise.resolve()
+
+    expect(facade.open()).toBe(false)
+    expect(facade.promptWorkflowRefresh()).toEqual(
+      expect.objectContaining({
+        workspaceId: 'workspace-1',
+        workflowId: 'workflow-1',
+        key: 'review',
+        operation: 'updated'
+      })
+    )
+  })
+
+  it('ignores prompt workflow effects without workspace id', () => {
+    const { facade, router } = createFacade('/xpert/w/workspace-1')
+
+    facade.handleEffect({
+      name: 'refresh_prompt_workflows',
+      data: {
+        key: 'review'
+      }
+    } as any)
+
+    expect(router.navigate).not.toHaveBeenCalled()
+    expect(facade.promptWorkflowRefresh()).toBeNull()
+  })
+
+  it('navigates to workspace skills and emits refresh after skill authoring effects', async () => {
+    const { facade, router } = createFacade('/xpert/w/workspace-1')
+
+    facade.handleEffect({
+      name: 'refresh_workspace_skills',
+      data: {
+        workspaceId: 'workspace-1',
+        skillId: 'skill-1',
+        operation: 'created'
+      }
+    } as any)
+
+    expect(router.navigate).toHaveBeenCalledWith(['/xpert/w', 'workspace-1', 'skills'])
+    await router.navigate.mock.results[0].value
+    await Promise.resolve()
+
+    expect(facade.workspaceSkillRefresh()).toEqual(
+      expect.objectContaining({
+        workspaceId: 'workspace-1',
+        skillId: 'skill-1',
+        operation: 'created'
+      })
+    )
   })
 })

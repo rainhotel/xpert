@@ -903,6 +903,7 @@ export class XpertChatHandler implements ICommandHandler<XpertChatCommand> {
             }
         })
     }
+
 }
 
 function appendMessageSteps(aiMessage: IChatMessage, steps: TChatMessageStep[]) {

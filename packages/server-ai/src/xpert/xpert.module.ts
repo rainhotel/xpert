@@ -27,6 +27,7 @@ import { AssistantBindingModule } from '../assistant-binding/assistant-binding.m
 import { AgentViewHostDefinition } from '../view-extension/hosts/agent-view-host.definition'
 import { SkillPackageModule } from '../skill-package'
 import { XpertTemplateModule } from '../xpert-template/xpert-template.module'
+import { PromptWorkflowModule } from '../prompt-workflow'
 
 @Module({
     imports: [
@@ -46,6 +47,7 @@ import { XpertTemplateModule } from '../xpert-template/xpert-template.module'
         forwardRef(() => AssistantBindingModule),
         XpertTemplateModule,
         SkillPackageModule,
+        PromptWorkflowModule,
         SandboxModule,
         CopilotCheckpointModule,
         CopilotStoreModule,

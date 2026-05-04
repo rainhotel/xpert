@@ -6,7 +6,14 @@ import { AssistantCode, XpertAPIService } from 'apps/cloud/src/app/@core'
 import { AppService } from 'apps/cloud/src/app/app.service'
 import { distinctUntilChanged, EMPTY, filter, map, startWith, switchMap } from 'rxjs'
 import { injectAssistantChatkitRuntime } from '../../assistant/assistant-chatkit.runtime'
-import { ChatKitEffectEvent, getChatKitEffectXpertId } from '../utils'
+import {
+  type ChatKitEffectEvent,
+  type ChatKitPromptWorkflowEffect,
+  type ChatKitWorkspaceSkillEffect,
+  getChatKitEffectXpertId,
+  getChatKitPromptWorkflowEffect,
+  getChatKitWorkspaceSkillEffect
+} from '../utils'
 
 type AssistantRouteState = {
   workspaceRouteId: string | null
@@ -26,6 +33,14 @@ export type AssistantStudioRuntimeContext = {
 
 type StudioRefreshEvent = {
   xpertId: string | null
+  nonce: number
+}
+
+export type PromptWorkflowRefreshEvent = ChatKitPromptWorkflowEffect & {
+  nonce: number
+}
+
+export type WorkspaceSkillRefreshEvent = ChatKitWorkspaceSkillEffect & {
   nonce: number
 }
 
@@ -51,6 +66,8 @@ export class XpertAssistantFacade {
   readonly #xpertWorkspaceCache = signal<Record<string, string | null>>({})
   readonly #studioRuntimeContext = signal<AssistantStudioRuntimeContext | null>(null)
   readonly #studioRefresh = signal<StudioRefreshEvent | null>(null)
+  readonly #promptWorkflowRefresh = signal<PromptWorkflowRefreshEvent | null>(null)
+  readonly #workspaceSkillRefresh = signal<WorkspaceSkillRefreshEvent | null>(null)
   readonly xpertId = computed(() => this.#routeState().xpertRouteId)
   readonly workspaceId = computed(() => {
     const routeState = this.#routeState()
@@ -87,6 +104,8 @@ export class XpertAssistantFacade {
   readonly status = this.runtime.status
 
   readonly studioRefresh = this.#studioRefresh.asReadonly()
+  readonly promptWorkflowRefresh = this.#promptWorkflowRefresh.asReadonly()
+  readonly workspaceSkillRefresh = this.#workspaceSkillRefresh.asReadonly()
 
   constructor() {
     effect(() => {
@@ -109,6 +128,20 @@ export class XpertAssistantFacade {
   emitStudioRefresh(xpertId: string | null) {
     this.#studioRefresh.set({
       xpertId,
+      nonce: Date.now()
+    })
+  }
+
+  emitPromptWorkflowRefresh(effect: ChatKitPromptWorkflowEffect) {
+    this.#promptWorkflowRefresh.set({
+      ...effect,
+      nonce: Date.now()
+    })
+  }
+
+  emitWorkspaceSkillRefresh(effect: ChatKitWorkspaceSkillEffect) {
+    this.#workspaceSkillRefresh.set({
+      ...effect,
       nonce: Date.now()
     })
   }
@@ -155,6 +188,24 @@ export class XpertAssistantFacade {
         this.emitStudioRefresh(getChatKitEffectXpertId(event) ?? this.context().xpertId)
         return
       }
+      case 'refresh_prompt_workflows': {
+        const effect = getChatKitPromptWorkflowEffect(event)
+        if (!effect) {
+          return
+        }
+
+        void this.navigateToPromptWorkflows(effect)
+        return
+      }
+      case 'refresh_workspace_skills': {
+        const effect = getChatKitWorkspaceSkillEffect(event)
+        if (!effect) {
+          return
+        }
+
+        void this.navigateToWorkspaceSkills(effect)
+        return
+      }
       default: {
         return
       }
@@ -190,6 +241,26 @@ export class XpertAssistantFacade {
           }))
         }
       })
+  }
+
+  private async navigateToPromptWorkflows(effect: ChatKitPromptWorkflowEffect) {
+    this.setOpen(false)
+
+    try {
+      await this.#router.navigate(['/xpert/w', effect.workspaceId, 'prompt-workflows'])
+    } finally {
+      this.emitPromptWorkflowRefresh(effect)
+    }
+  }
+
+  private async navigateToWorkspaceSkills(effect: ChatKitWorkspaceSkillEffect) {
+    this.setOpen(false)
+
+    try {
+      await this.#router.navigate(['/xpert/w', effect.workspaceId, 'skills'])
+    } finally {
+      this.emitWorkspaceSkillRefresh(effect)
+    }
   }
 
   private readRouteState(): AssistantRouteState {
