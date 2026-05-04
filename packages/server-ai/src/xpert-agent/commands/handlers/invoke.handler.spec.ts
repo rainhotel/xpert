@@ -343,9 +343,11 @@ describe('XpertAgentInvokeHandler', () => {
 
     it('replays from checkpoint without sending a fresh graph input', async () => {
         const graph = createGraph()
+        let compileCommand: CompileGraphCommand | null = null
 
         commandBus.execute.mockImplementation(async (command) => {
             if (command instanceof CompileGraphCommand) {
+                compileCommand = command
                 return createCompiledGraph(graph)
             }
             return null
@@ -374,11 +376,17 @@ describe('XpertAgentInvokeHandler', () => {
                     context: {
                         source: 'run-create',
                         env: {
-                            existing: 'value'
+                            existing: 'value',
+                            oidc_token: 'request-token'
                         }
                     },
                     environment: {
                         variables: [
+                            {
+                                name: 'oidc_token',
+                                value: '',
+                                type: 'secret'
+                            },
                             {
                                 name: 'workspaceId',
                                 value: 'workspace-1',
@@ -411,11 +419,20 @@ describe('XpertAgentInvokeHandler', () => {
                     source: 'run-create',
                     env: {
                         existing: 'value',
+                        oidc_token: 'request-token',
                         workspaceId: 'workspace-1'
                     }
                 }
             }
         })
+        expect(compileCommand?.options.environment?.variables).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    name: 'oidc_token',
+                    value: 'request-token'
+                })
+            ])
+        )
         expect(graph.streamEvents.mock.calls[0][0]).toMatchObject({
             update: {
                 sys: expect.objectContaining({

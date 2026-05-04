@@ -41,7 +41,12 @@ import { createMapStreamEvents } from '../../agent'
 import { CompleteToolCallsQuery } from '../../queries'
 import { CompileGraphCommand } from '../compile-graph.command'
 import { XpertAgentInvokeCommand } from '../invoke.command'
-import { EnvironmentService, mergeRuntimeContextWithEnv } from '../../../environment'
+import {
+    EnvironmentService,
+    getContextEnvState,
+    mergeEnvironmentWithEnvState,
+    mergeRuntimeContextWithEnv
+} from '../../../environment'
 import {
     ExecutionCancelService,
     isPlanModeEnabledFromState,
@@ -174,6 +179,7 @@ export class XpertAgentInvokeHandler implements ICommandHandler<XpertAgentInvoke
             const environment = await this.envService.findOne(xpert.environmentId)
             options.environment = environment
         }
+        options.environment = mergeEnvironmentWithEnvState(options.environment, getContextEnvState(options.context))
 
         const abortController = new AbortController()
         if (execution?.id) {
