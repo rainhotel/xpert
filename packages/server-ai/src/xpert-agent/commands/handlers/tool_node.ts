@@ -65,7 +65,7 @@ export class ToolNode<T = any> extends Runnable<T, T> {
       input[this.channel]?.messages : input.messages
     const message = messages ? messages[messages.length - 1] : null
 
-    if (message?._getType() !== "ai") {
+    if (!input.toolCall && message?._getType() !== "ai") {
       throw new Error("ToolNode only accepts AIMessages as input.");
     }
 

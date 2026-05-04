@@ -89,12 +89,10 @@ export class XpertWorkspaceSkillsComponent {
 
   readonly workspace = this.homeComponent.workspace
   readonly #skillsResource = myRxResource({
-    request: () => ({
-      workspaceId: this.workspace()?.id
-    }),
-    loader: ({ request }) =>
-      request.workspaceId
-        ? this.skillPackageAPI.getAllByWorkspace(request.workspaceId, {
+    request: () => this.workspace()?.id,
+    loader: ({ request: workspaceId }) =>
+      workspaceId
+        ? this.skillPackageAPI.getAllByWorkspace(workspaceId, {
             relations: ['skillIndex', 'skillIndex.repository']
           })
         : null
@@ -146,6 +144,7 @@ export class XpertWorkspaceSkillsComponent {
   readonly registering = signal(false)
   #registerDialogRef: DialogRef<unknown, unknown> | null = null
   #githubInstallDialogRef: DialogRef<unknown, unknown> | null = null
+  #lastAssistantSkillRefreshKey: string | null = null
 
   readonly #refreshFromAssistantTool = effect(
     () => {
@@ -154,7 +153,12 @@ export class XpertWorkspaceSkillsComponent {
       if (!refreshEvent || !workspaceId || refreshEvent.workspaceId !== workspaceId) {
         return
       }
+      const refreshKey = `${workspaceId}:${refreshEvent.nonce}`
+      if (refreshKey === this.#lastAssistantSkillRefreshKey) {
+        return
+      }
 
+      this.#lastAssistantSkillRefreshKey = refreshKey
       if (refreshEvent.skillId && refreshEvent.operation !== 'deleted') {
         this.#pendingAssistantSkillId.set(refreshEvent.skillId)
       }
@@ -254,6 +258,9 @@ export class XpertWorkspaceSkillsComponent {
             next.add(id)
           }
         })
+        if (next.size === selected.size) {
+          return selected
+        }
         return next
       })
     },

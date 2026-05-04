@@ -66,6 +66,7 @@ import {
     AgentMiddlewareRegistry,
     BeforeModelHandler,
     IAgentMiddlewareContext,
+    JumpToTarget,
     ModelRequest,
     WrapModelCallHandler,
     WrapToolCallHook
@@ -128,6 +129,7 @@ import { createThreadContextUsageEventHook } from '../../hooks/context-usage.hoo
 import { parseXmlString } from './types'
 import { collectStartDrivenAgentEntrySources, rerouteAgentEntryTarget } from './subgraph-entry-routing'
 import { XpertTitleMiddlewareService } from '../../title/xpert-title.middleware'
+import { getPendingToolCallsAfterTrailingToolMessages } from './agent-navigation'
 
 const XPERT_TITLE_MIDDLEWARE_NODE_KEY = '__xpert_title_middleware__'
 
@@ -1181,6 +1183,7 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
         const agentLoopEntryNode = hasSteerPreTurnNodes
             ? stagePendingFollowUpsNodeKey
             : beforeModelHooks[0]?.key ?? agentKey
+        const modelLoopEntryNode = beforeModelHooks[0]?.key ?? agentKey
         const agentStartNode = beforeAgentHooks[0]?.key ?? agentLoopEntryNode
         const agentDecisionNode = afterModelExecutionOrder[afterModelExecutionOrder.length - 1]?.key ?? agentKey
         const afterAgentEntryNode = afterAgentExecutionOrder[0]?.key
@@ -1402,11 +1405,12 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
         // Conditional navigator for entry Agent
         if (!hiddenAgent) {
             const toolNames = withTools.map((tool) => tool.name)
-            const decisionPathMap = afterAgentEntryNode
+            const baseDecisionPathMap = afterAgentEntryNode
                 ? [...pathMap, afterAgentEntryNode]
                 : nextNodeKey.length
                   ? pathMap
                   : [...pathMap, END]
+            const decisionPathMap = uniq([...baseDecisionPathMap, modelLoopEntryNode])
 
             subgraphBuilder.addConditionalEdges(
                 agentDecisionNode,
@@ -1415,7 +1419,8 @@ export class XpertAgentSubgraphHandler implements ICommandHandler<XpertAgentSubg
                     summarize,
                     afterAgentEntryNode ? undefined : nextNodeKey,
                     isStart ? fail?.[0]?.key : undefined,
-                    afterAgentEntryNode
+                    afterAgentEntryNode,
+                    { model: modelLoopEntryNode }
                 ),
                 decisionPathMap
             )
@@ -1778,12 +1783,31 @@ function createAgentNavigator(
     summarize: TSummarize,
     nextNodes?: string[] | ((state, config) => string),
     fail?: string,
-    exitNode?: string
+    exitNode?: string,
+    jumpTargets?: Partial<Record<JumpToTarget, string>>
 ) {
     return (state: typeof AgentStateAnnotation.State, config) => {
+        const jumpTo = consumeJumpTo(config)
+        if (jumpTo === 'end') {
+            return END
+        }
+        if (jumpTo === 'model' && jumpTargets?.model) {
+            return jumpTargets.model
+        }
+
         const subState = getChannelState(state, agentChannel)
         const messages = subState?.messages ?? []
         const lastMessage = messages[messages.length - 1]
+        const pendingToolCalls = getPendingToolCallsAfterTrailingToolMessages(messages)
+        if (pendingToolCalls.length) {
+            return pendingToolCalls.map((toolCall) => {
+                if (!toolCall.name) {
+                    throw new InternalServerErrorException(`tool_call's name is empty in '${agentChannel}'.`)
+                }
+                return new Send(toolCall.name, { ...state, toolCall })
+            })
+        }
+
         if (isBaseMessage(lastMessage) && isAIMessage(lastMessage)) {
             if (!lastMessage.tool_calls || lastMessage.tool_calls.length === 0) {
                 if (exitNode) {
@@ -1818,13 +1842,6 @@ function createAgentNavigator(
 
                 return END
             }
-
-            return lastMessage.tool_calls.map((toolCall) => {
-                if (!toolCall.name) {
-                    throw new InternalServerErrorException(`tool_call's name is empty in '${agentChannel}'.`)
-                }
-                return new Send(toolCall.name, { ...state, toolCall })
-            })
         }
 
         if (exitNode) {
@@ -1843,6 +1860,14 @@ function createAgentNavigator(
 
         return END
     }
+}
+
+function consumeJumpTo(config: RunnableConfig | undefined): JumpToTarget | undefined {
+    const jumpTo = (config as { jumpTo?: JumpToTarget } | undefined)?.jumpTo
+    if (jumpTo) {
+        delete (config as { jumpTo?: JumpToTarget }).jumpTo
+    }
+    return jumpTo
 }
 
 function createAfterAgentNavigator(

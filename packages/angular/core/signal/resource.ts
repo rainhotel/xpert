@@ -48,7 +48,7 @@ export function myResource<TReq, TRes>(options: ResourceOptions<TReq, TRes>) {
     value: computed(() => valueSig()),
     error: computed(() => errorSig()),
     status: computed(() => statusSig()),
-    reload: () => refreshTrigger.set(refreshTrigger() + 1)
+    reload: () => untracked(() => refreshTrigger.set(refreshTrigger() + 1))
   }
 }
 
@@ -119,6 +119,6 @@ export function myRxResource<TReq, TRes>(options: RxResourceOptions<TReq, TRes>)
     value: computed(() => valueSig()),
     error: computed(() => getErrorMessage(errorSig())),
     status: computed(() => statusSig()),
-    reload: () => refreshTrigger.set(refreshTrigger() + 1)
+    reload: () => untracked(() => refreshTrigger.set(refreshTrigger() + 1))
   }
 }

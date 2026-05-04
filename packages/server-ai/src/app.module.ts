@@ -24,6 +24,7 @@ import { SandboxModule } from './sandbox/sandbox.module'
 import { XpertModule } from './xpert'
 import { XpertAgentExecutionModule } from './xpert-agent-execution'
 import { XpertAgentModule } from './xpert-agent/index'
+import { XpertMiddlewareModule } from './xpert-middleware'
 import { XpertProjectModule } from './xpert-project/project.module'
 import { XpertTaskModule } from './xpert-task'
 import { XpertTemplateModule } from './xpert-template/xpert-template.module'
@@ -68,6 +69,7 @@ import { VolumeModule } from './shared/volume'
         VolumeModule,
         XpertModule,
         XpertAgentModule,
+        XpertMiddlewareModule,
         XpertAgentExecutionModule,
         XpertToolModule,
         XpertToolsetModule,
