@@ -27,8 +27,8 @@ export function mergeRuntimeContextWithEnv<T extends Record<string, unknown>>(
 
 	if (contextEnv || runtimeEnv) {
 		runtimeContext.env = {
-			...(contextEnv ?? {}),
-			...(runtimeEnv ?? {})
+			...(runtimeEnv ?? {}),
+			...(contextEnv ?? {})
 		}
 	}
 

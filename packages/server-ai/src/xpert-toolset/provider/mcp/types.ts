@@ -13,11 +13,13 @@ import { environment } from '@xpert-ai/server-config'
 import { runScript } from '@xpert-ai/server-core'
 import { t } from 'i18next'
 import { isNil, omitBy } from 'lodash'
+import { buildMCPHeaders } from './headers'
 
 export async function createMCPClient(
 	toolset: Partial<IXpertToolset>,
 	schema: TMCPSchema,
-	envState: Record<string, unknown>
+	envState: Record<string, unknown>,
+	xpertId?: string
 ) {
 	const logs: string[] = []
 	const mcpServers = {}
@@ -29,12 +31,7 @@ export async function createMCPClient(
 		const name = serverName || toolset.name || 'default'
 		const transport = server.type?.toLowerCase()
 		if (transport === MCPServerType.HTTP) {
-			const headers = server.headers ?? {}
-			for await (const name of Object.keys(headers)) {
-				headers[name] = await PromptTemplate.fromTemplate(headers[name], {
-					templateFormat: 'mustache'
-				}).format(envState)
-			}
+			const headers = await buildMCPHeaders(server.headers, envState, xpertId)
 			mcpServers[name] = omitBy(
 				{
 					...server,
@@ -44,12 +41,7 @@ export async function createMCPClient(
 				isNil
 			)
 		} else if (transport === MCPServerType.SSE || (!transport && server.url)) {
-			const headers = server.headers ?? {}
-			for await (const name of Object.keys(headers)) {
-				headers[name] = await PromptTemplate.fromTemplate(headers[name], {
-					templateFormat: 'mustache'
-				}).format(envState)
-			}
+			const headers = await buildMCPHeaders(server.headers, envState, xpertId)
 			mcpServers[name] = omitBy(
 				{
 					...server,

@@ -63,6 +63,12 @@ export class PublishedXpertAccessService {
         return workspaceId || null
     }
 
+    private currentRequestedUserId() {
+        const apiPrincipal = this.currentApiPrincipal() as IApiPrincipal | null
+        const userId = apiPrincipal?.requestedUserId?.trim()
+        return userId || null
+    }
+
     private currentOrganizationId() {
         const apiPrincipal = this.currentApiPrincipal() as IApiPrincipal | null
         const organizationId = apiPrincipal?.requestedOrganizationId ?? RequestContext.getOrganizationId()
@@ -130,7 +136,7 @@ export class PublishedXpertAccessService {
 
     private buildAccessibleQuery(options?: PublishedXpertQueryOptions) {
         const workspaceId = this.currentWorkspaceApiKeyWorkspaceId()
-        if (workspaceId) {
+        if (workspaceId && !this.currentRequestedUserId()) {
             return this.buildWorkspaceBoundQuery(workspaceId, options)
         }
 
@@ -159,6 +165,14 @@ export class PublishedXpertAccessService {
                 tenantId
             })
             .andWhere('xpert.publishAt IS NOT NULL')
+
+        if (workspaceId) {
+            qb.andWhere('xpert.workspaceId = :workspaceApiKeyWorkspaceId', {
+                workspaceApiKeyWorkspaceId: workspaceId
+            })
+        }
+
+        qb
             .andWhere(
                 new Brackets((scopeQb) => {
                     scopeQb
@@ -283,7 +297,9 @@ export class PublishedXpertAccessService {
             if (xpert.workspaceId !== workspaceId) {
                 throw new ForbiddenException('You do not have access to this assistant.')
             }
-            return xpert
+            if (!this.currentRequestedUserId()) {
+                return xpert
+            }
         }
 
         const userId = this.currentUserId()

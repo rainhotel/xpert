@@ -228,6 +228,70 @@ describe('PublishedXpertAccessService', () => {
         expect(repository.createQueryBuilder).not.toHaveBeenCalled()
     })
 
+    it('checks user-level published access when a workspace key includes requestedUserId', async () => {
+        ;(RequestContext.currentApiPrincipal as jest.Mock).mockReturnValue({
+            apiKey: {
+                type: ApiKeyBindingType.WORKSPACE,
+                entityId: 'workspace-1'
+            },
+            requestedUserId: 'user-1',
+            requestedOrganizationId: 'org-requested'
+        })
+        ;(RequestContext.getOrganizationId as jest.Mock).mockReturnValue(null)
+
+        const qb = createQueryBuilderMock({ count: 1 })
+        const repository = {
+            findOne: jest.fn().mockResolvedValue({
+                id: 'xpert-workspace-1',
+                tenantId: 'tenant-1',
+                organizationId: 'org-requested',
+                workspaceId: 'workspace-1',
+                publishAt: new Date()
+            }),
+            createQueryBuilder: jest.fn().mockReturnValue(qb)
+        }
+        const service = new PublishedXpertAccessService(asXpertRepository(repository))
+
+        await expect(service.getAccessiblePublishedXpert('xpert-workspace-1')).resolves.toMatchObject({
+            id: 'xpert-workspace-1'
+        })
+        expect(repository.createQueryBuilder).toHaveBeenCalled()
+        expect(qb.andWhere).toHaveBeenCalledWith('xpert.workspaceId = :workspaceApiKeyWorkspaceId', {
+            workspaceApiKeyWorkspaceId: 'workspace-1'
+        })
+        expect(qb.leftJoin).toHaveBeenCalledWith('userGroup.members', 'member', 'member.id = :userId', {
+            userId: 'user-1'
+        })
+    })
+
+    it('rejects a workspace key requested user when published access does not grant the user', async () => {
+        ;(RequestContext.currentApiPrincipal as jest.Mock).mockReturnValue({
+            apiKey: {
+                type: ApiKeyBindingType.WORKSPACE,
+                entityId: 'workspace-1'
+            },
+            requestedUserId: 'user-1',
+            requestedOrganizationId: 'org-requested'
+        })
+        ;(RequestContext.getOrganizationId as jest.Mock).mockReturnValue(null)
+
+        const repository = {
+            findOne: jest.fn().mockResolvedValue({
+                id: 'xpert-workspace-1',
+                tenantId: 'tenant-1',
+                organizationId: 'org-requested',
+                workspaceId: 'workspace-1',
+                publishAt: new Date()
+            }),
+            createQueryBuilder: jest.fn().mockReturnValue(createQueryBuilderMock({ count: 0 }))
+        }
+        const service = new PublishedXpertAccessService(asXpertRepository(repository))
+
+        await expect(service.getAccessiblePublishedXpert('xpert-workspace-1')).rejects.toThrow(
+            'You do not have access to this assistant.'
+        )
+    })
+
     it('rejects a workspace key when the assistant belongs to another workspace', async () => {
         ;(RequestContext.currentApiPrincipal as jest.Mock).mockReturnValue({
             apiKey: {
