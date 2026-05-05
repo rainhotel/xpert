@@ -27,9 +27,15 @@ export class XpertWorkspaceService extends TenantOrganizationAwareCrudService<Xp
 
 	async findAllMy(options: PaginationParams<XpertWorkspace>) {
 		const workspaces = await this.workspaceAccessService.findAccessibleWorkspaces(options?.order)
+		const items = await Promise.all(
+			workspaces.map(async (item) => {
+				const access = await this.workspaceAccessService.buildAccess(item)
+				return new WorkspacePublicDTO(access.workspace)
+			})
+		)
 
 		return {
-			items: workspaces.map((item) => new WorkspacePublicDTO(this.workspaceAccessService.buildAccess(item).workspace))
+			items
 		}
 	}
 
@@ -63,7 +69,7 @@ export class XpertWorkspaceService extends TenantOrganizationAwareCrudService<Xp
 		}
 
 		const workspace = await this.findUserDefaultWorkspace(organizationId, userId)
-		return workspace ? this.workspaceAccessService.buildAccess(workspace).workspace : null
+		return workspace ? (await this.workspaceAccessService.buildAccess(workspace)).workspace : null
 	}
 
 	async setMyDefault(workspaceId: string) {
@@ -119,7 +125,7 @@ export class XpertWorkspaceService extends TenantOrganizationAwareCrudService<Xp
 		}
 
 		const saved = await this.workspaceRepository.save(workspace)
-		return this.workspaceAccessService.buildAccess(saved).workspace
+		return (await this.workspaceAccessService.buildAccess(saved)).workspace
 	}
 
 	async canAccess(id: string, userId: string) {

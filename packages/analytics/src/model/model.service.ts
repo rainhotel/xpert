@@ -36,6 +36,14 @@ import { SemanticModelUpdatedEvent } from './events'
 import { XMLA_CONNECTION_KEY, updateXmlaCatalogContent } from './helper'
 import { SemanticModel } from './model.entity'
 import { NgmDSCoreService, registerSemanticModel } from './ocap'
+import { ModelCubeQuery } from './queries/cube.query'
+import {
+	buildOcapQueryFromUose,
+	buildUoseMdxError,
+	normalizeUoseQueryResponse,
+	UoseMdxAdapterErrorCode,
+	UoseMdxQueryRequest
+} from './uose-query.mapper'
 import { CubeValidator, DimensionValidator, RoleValidator, VirtualCubeValidator } from './validators'
 import { EVENT_SEMANTIC_MODEL_DELETED, SemanticModelDeletedEvent } from './types'
 
@@ -193,6 +201,55 @@ export class SemanticModelService extends BusinessAreaAwareCrudService<SemanticM
 			...options,
 			catalog: model.catalog
 		})
+	}
+
+	async queryUose(request: UoseMdxQueryRequest, options: { acceptLanguage?: string } = {}) {
+		const startedAt = Date.now()
+		try {
+			if (!request?.modelId) {
+				return buildUoseMdxError(UoseMdxAdapterErrorCode.PROVIDER_ERROR, 'UOSE query requires modelId')
+			}
+
+			if (request.queryMode === 'mdx_statement' || request.statement) {
+				if (!request.statement?.trim()) {
+					return buildUoseMdxError(UoseMdxAdapterErrorCode.PROVIDER_ERROR, 'MDX statement query requires statement')
+				}
+				const result = await this.query(request.modelId, { statement: request.statement }, {
+					acceptLanguage: options.acceptLanguage,
+					id: request.context?.traceId
+				})
+				return normalizeUoseQueryResponse(request, result, Date.now() - startedAt)
+			}
+
+			const query = buildOcapQueryFromUose(request)
+			const result = await this.queryBus.execute(
+				new ModelCubeQuery(
+					{
+						id: request.context?.traceId ?? request.context?.taskId ?? request.modelId,
+						sessionId: request.context?.taskId ?? request.context?.traceId ?? request.modelId,
+						organizationId: request.context?.organizationId ?? RequestContext.getOrganizationId() ?? '',
+						dataSourceId: '',
+						tenantId: request.context?.tenantId,
+						modelId: request.modelId,
+						isDraft: false,
+						body: {
+							query
+						},
+						acceptLanguage: options.acceptLanguage,
+						forceRefresh: false
+					},
+					RequestContext.currentUser() ?? {}
+				)
+			)
+
+			return normalizeUoseQueryResponse(request, result, Date.now() - startedAt)
+		} catch (err) {
+			return buildUoseMdxError(UoseMdxAdapterErrorCode.PROVIDER_ERROR, getErrorMessage(err), {
+				modelId: request?.modelId,
+				cubeName: request?.cubeName,
+				queryMode: request?.queryMode ?? 'semantic_dsl'
+			})
+		}
 	}
 
 	async import(modelId: string, body: any) {

@@ -18,7 +18,7 @@
       @for (column of columns; track column.name) {
         <th
           z-table-head
-          [ngClass]="[stickyHeaders ? 'sticky top-0 z-20 bg-background' : '', column.headerClass]"
+          [ngClass]="[stickyHeaders ? 'sticky top-0 z-20 bg-background' : '', column.headerClass ?? '']"
           [zTableStickyStart]="column.sticky ? stickyStartOffset(column.name) : null"
           [zTableStickyEnd]="column.stickyEnd ? stickyEndOffset(column.name) : null"
           [zTableStickyZIndex]="column.sticky || column.stickyEnd ? 5 : 1"
@@ -66,7 +66,7 @@
             [zTableStickyStart]="column.sticky ? stickyStartOffset(column.name) : null"
             [zTableStickyEnd]="column.stickyEnd ? stickyEndOffset(column.name) : null"
             [zTableStickyZIndex]="column.sticky || column.stickyEnd ? 4 : 1"
-            [ngClass]="column.cellClass"
+            [ngClass]="column.cellClass ?? ''"
             [style.width]="column.width || null"
             [style.min-width]="column.minWidth || null"
             [style.max-width]="column.maxWidth || null"
