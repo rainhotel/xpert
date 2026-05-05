@@ -36,7 +36,8 @@ jest.mock('@xpert-ai/plugin-sdk', () => ({
     RequestContext: {
         currentApiKey: jest.fn(),
         currentRequest: jest.fn(),
-        currentUser: jest.fn()
+        currentUser: jest.fn(),
+        isOrganizationScope: jest.fn()
     }
 }))
 
@@ -565,6 +566,7 @@ describe('RunCreateStreamHandler environment resolution', () => {
 describe('RunCreateStreamHandler execute', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        ;(RequestContext.isOrganizationScope as jest.Mock).mockReturnValue(false)
     })
 
     it('forwards the full runCreate.context and merged environment to Xpert chat', async () => {
@@ -659,7 +661,7 @@ describe('RunCreateStreamHandler execute', () => {
         )?.[0]
 
         expect(publishedXpertAccessService.getAccessiblePublishedXpert).toHaveBeenCalledWith('xpert-1', {
-            relations: ['user', 'createdBy']
+            relations: ['user', 'createdBy', 'workspace']
         })
         expect(publishedXpertAccessService.getPublishedXpertInTenant).not.toHaveBeenCalled()
         expect(xpertChatCommand).toBeInstanceOf(XpertChatCommand)
@@ -871,6 +873,7 @@ describe('RunCreateStreamHandler execute', () => {
                 id: 'xpert-tenant-1',
                 tenantId: 'tenant-1',
                 organizationId: null,
+                workspaceId: 'workspace-1',
                 user: {
                     id: 'assistant-user-1',
                     tenantId: 'tenant-1',
@@ -913,7 +916,7 @@ describe('RunCreateStreamHandler execute', () => {
         } as any)
 
         expect(publishedXpertAccessService.getAccessiblePublishedXpert).toHaveBeenCalledWith('xpert-tenant-1', {
-            relations: ['user', 'createdBy']
+            relations: ['user', 'createdBy', 'workspace']
         })
         expect(request.headers['organization-id']).toBeUndefined()
         expect(request.headers['x-scope-level']).toBe('tenant')
@@ -1143,7 +1146,7 @@ describe('RunCreateStreamHandler execute', () => {
         } as any)
 
         expect(publishedXpertAccessService.getAccessiblePublishedXpert).toHaveBeenCalledWith('xpert-workspace-1', {
-            relations: ['user', 'createdBy']
+            relations: ['user', 'createdBy', 'workspace']
         })
         expect(request.headers['organization-id']).toBeUndefined()
         expect(request.headers['x-scope-level']).toBe('tenant')
@@ -1227,7 +1230,7 @@ describe('RunCreateStreamHandler execute', () => {
 
         expect(commandBus.execute).not.toHaveBeenCalled()
         expect(publishedXpertAccessService.getAccessiblePublishedXpert).toHaveBeenCalledWith('xpert-workspace-2', {
-            relations: ['user', 'createdBy']
+            relations: ['user', 'createdBy', 'workspace']
         })
     })
 
@@ -1308,7 +1311,7 @@ describe('RunCreateStreamHandler execute', () => {
 
         expect(assistantBindingService.isEffectiveSystemAssistantId).toHaveBeenCalledWith('org-assistant-1')
         expect(publishedXpertAccessService.getPublishedXpertInTenant).toHaveBeenCalledWith('org-assistant-1', {
-            relations: ['user', 'createdBy']
+            relations: ['user', 'createdBy', 'workspace']
         })
         expect(publishedXpertAccessService.getAccessiblePublishedXpert).not.toHaveBeenCalled()
     })
