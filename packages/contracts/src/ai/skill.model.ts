@@ -1,5 +1,13 @@
 // Skill types
 
+import type {
+  ChatKitPromptWorkflow,
+  ChatKitSlashCommand,
+  ChatKitSlashCommandAction,
+  ChatKitSlashCommandAvailability,
+  ChatKitSlashCommandCapability,
+  ChatKitSlashCommandKind
+} from '@xpert-ai/chatkit-types'
 import { IBasePerTenantAndOrganizationEntityModel } from '../base-entity.model'
 import { I18nObject, IconDefinition, letterStartSUID } from '../types'
 import { JsonSchemaObjectType } from './types'
@@ -28,78 +36,13 @@ export interface ISkillRepositoryIndexPublisher {
   kind?: string
 }
 
-export type SkillSlashCommandCapability =
-  | {
-      type: 'skill'
-      id: string
-    }
-  | {
-      type: 'plugin'
-      id: string
-    }
-  | {
-      type: 'subAgent'
-      id: string
-    }
-
-export type SkillSlashCommandAction =
-  | {
-      type: 'insert_text'
-      template: string
-      runtimeCapabilities?: unknown
-    }
-  | {
-      type: 'insert_invocation'
-      template: string
-      runtimeCapabilities?: unknown
-    }
-  | {
-      type: 'submit_prompt'
-      template: string
-      runtimeCapabilities?: unknown
-    }
-  | {
-      type: 'client_action'
-      action: {
-        type: string
-        payload?: Record<string, unknown>
-      }
-    }
-  | {
-      type: 'select_capability'
-      capability: SkillSlashCommandCapability
-    }
-
-export type SkillSlashCommandAvailability = {
-  disabled?: boolean
-  reason?: string
-  [key: string]: unknown
-}
-
-export type SkillSlashCommandKind = 'command' | 'prompt_workflow'
-
-export type SkillPromptWorkflow = {
-  type: 'prompt_workflow'
-  name?: string
-  label?: string
-  description?: string
-  tags?: string[]
-}
-
-export type SkillSlashCommand = {
-  name: string
-  label?: string
-  description?: string
-  icon?: string | IconDefinition | Record<string, unknown>
-  category?: string
-  aliases?: string[]
-  argsHint?: string
-  availability?: SkillSlashCommandAvailability
-  kind?: SkillSlashCommandKind
-  workflow?: SkillPromptWorkflow
-  action: SkillSlashCommandAction
-  source?: Record<string, unknown>
-  meta?: Record<string, unknown>
+export type SkillSlashCommandCapability = ChatKitSlashCommandCapability
+export type SkillSlashCommandAction = ChatKitSlashCommandAction
+export type SkillSlashCommandAvailability = ChatKitSlashCommandAvailability
+export type SkillSlashCommandKind = ChatKitSlashCommandKind
+export type SkillPromptWorkflow = ChatKitPromptWorkflow
+export type SkillSlashCommand = Omit<ChatKitSlashCommand, 'icon'> & {
+  icon?: ChatKitSlashCommand['icon'] | IconDefinition
 }
 
 export interface IShareSkillPackageInput {
