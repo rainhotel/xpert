@@ -126,6 +126,39 @@ class TreeTableHostComponent {
   ]
 }
 
+@Component({
+  standalone: true,
+  imports: [TreeTableModule],
+  template: `
+    <ngm-tree-table
+      [columns]="columns"
+      [data]="data"
+      nameLabel="Name"
+      [stickyHeaders]="true"
+    />
+  `
+})
+class TreeTableWithoutOptionalClassesHostComponent {
+  readonly columns = [
+    {
+      name: 'title',
+      caption: 'Title'
+    }
+  ]
+
+  readonly data = [
+    {
+      key: 'node-1',
+      name: 'node-1',
+      caption: 'Node 1',
+      raw: {
+        title: 'Quarterly forecast'
+      },
+      children: []
+    }
+  ]
+}
+
 describe('table column options', () => {
   it('applies sizing and custom classes to ngm-table columns', async () => {
     const fixture = await TestBed.configureTestingModule({
@@ -284,5 +317,20 @@ describe('table column options', () => {
     expect(content.classList.contains('content-class')).toBe(true)
     expect(content.title).toBe('Quarterly forecast')
     expect(content.textContent?.trim()).toBe('Quarterly forecast')
+  })
+
+  it('renders ngm-tree-table columns without optional classes', async () => {
+    const fixture = await TestBed.configureTestingModule({
+      imports: [TreeTableWithoutOptionalClassesHostComponent]
+    }).createComponent(TreeTableWithoutOptionalClassesHostComponent)
+
+    expect(() => fixture.detectChanges()).not.toThrow()
+
+    const nativeElement = fixture.nativeElement as HTMLElement
+    const header = nativeElement.querySelectorAll('th[z-table-head]')[1] as HTMLElement
+    const cell = nativeElement.querySelectorAll('td[z-table-cell]')[1] as HTMLElement
+
+    expect(header.classList.contains('sticky')).toBe(true)
+    expect(cell.textContent?.trim()).toBe('Quarterly forecast')
   })
 })
