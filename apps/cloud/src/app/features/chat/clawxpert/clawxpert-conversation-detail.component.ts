@@ -276,7 +276,7 @@ type ChatKitReferenceComposerControl = {
                   </div>
                 }
                 @case ('ready') {
-                  <xpert-chatkit class="h-full min-h-[32rem]" [control]="control()!" />
+                  <xpert-chatkit class="block h-full min-h-0" [control]="control()!" />
                 }
                 @default {
                   <div class="flex h-full min-h-[32rem] flex-col items-center justify-center rounded-2xl border border-dashed border-divider-regular bg-background-default-subtle px-6 text-center">
@@ -363,8 +363,8 @@ export class ClawXpertConversationDetailComponent implements OnDestroy {
   readonly showDetailPanel = computed(() => !!this.activePanel())
   readonly workspaceLayoutClasses = computed(() =>
     this.showDetailPanel()
-      ? 'grid h-full min-h-0 grid-cols-1 transition-[grid-template-columns,gap] duration-300 ease-out xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]'
-      : 'grid h-full min-h-0 grid-cols-1 transition-[grid-template-columns,gap] duration-300 ease-out xl:grid-cols-[0rem_minmax(0,1fr)]'
+      ? 'grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(24rem,32rem)] transition-[grid-template-columns,grid-template-rows,gap] duration-300 ease-out xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)] xl:grid-rows-1'
+      : 'grid h-full min-h-0 grid-cols-1 grid-rows-[0rem_minmax(0,1fr)] transition-[grid-template-columns,grid-template-rows,gap] duration-300 ease-out xl:grid-cols-[0rem_minmax(0,1fr)] xl:grid-rows-1'
   )
   readonly detailPanelShellClasses = computed(() =>
     this.showDetailPanel()

@@ -253,6 +253,19 @@ describe('FileViewerComponent', () => {
     expect(refreshes).toEqual([1])
   })
 
+  it('sets the full file path as the header path tooltip title', () => {
+    const fixture = TestBed.createComponent(FileViewerComponent)
+    fixture.componentRef.setInput('filePath', 'docs/architecture/long-file-name.md')
+    fixture.detectChanges()
+
+    const pathLabel = fixture.debugElement.query(By.css('[data-file-path-label="viewer"]'))
+
+    expect(pathLabel).not.toBeNull()
+    expect((pathLabel.nativeElement as HTMLElement).getAttribute('title')).toBe(
+      'docs/architecture/long-file-name.md'
+    )
+  })
+
   it('disables the inline selection action in markdown preview while keeping full-file references', () => {
     const fixture = TestBed.createComponent(FileViewerComponent)
     fixture.componentRef.setInput('filePath', 'README.md')

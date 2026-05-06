@@ -91,7 +91,15 @@
                 <span [class]="togglePlaceholderClasses()"></span>
               }
 
-              <button type="button" [class]="itemContentClasses()" (click)="onItemClick(item)">
+              <button
+                type="button"
+                data-file-tree-item-content
+                [class]="itemContentClasses()"
+                [zTooltip]="item.fullPath || item.filePath"
+                zPosition="top"
+                [title]="item.fullPath || item.filePath"
+                (click)="onItemClick(item)"
+              >
                 <i
                   [class]="itemIconClasses()"
                   [class.ri-folder-open-line]="item.hasChildren && item.expanded"
