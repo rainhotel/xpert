@@ -2,6 +2,7 @@ import { computed, effect, inject, Injectable, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { NavigationEnd, Router } from '@angular/router'
 import { injectWorkspace } from '@xpert-ai/cloud/state'
+import { ChatKitPetOptions } from '@xpert-ai/chatkit-types'
 import { AssistantCode, XpertAPIService } from '../../../@core'
 import { distinctUntilChanged, EMPTY, filter, map, startWith, switchMap } from 'rxjs'
 import { injectAssistantChatkitRuntime } from '../../assistant/assistant-chatkit.runtime'
@@ -43,14 +44,15 @@ export type WorkspaceSkillRefreshEvent = ChatKitWorkspaceSkillEffect & {
   nonce: number
 }
 
-const SHARED_ASSISTANT_PET = {
+const SHARED_ASSISTANT_PET: ChatKitPetOptions = {
   behavior: 'auto' as const,
   position: {
     pin: 'bottom-right' as const,
     draggable: true,
     persist: true,
     boundsPadding: 16,
-    zIndex: 70
+    zIndex: 70,
+    scale: 1
   }
 }
 
