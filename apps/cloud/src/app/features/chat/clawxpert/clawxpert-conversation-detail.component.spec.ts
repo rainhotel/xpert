@@ -412,6 +412,8 @@ describe('ClawXpertConversationDetailComponent', () => {
     await settle(fixture)
 
     expect(fixture.componentInstance.workspaceLayoutClasses()).toContain('xl:grid-cols-[0rem_minmax(0,1fr)]')
+    expect(fixture.componentInstance.workspaceLayoutClasses()).toContain('grid-rows-[0rem_minmax(0,1fr)]')
+    expect(fixture.componentInstance.workspaceLayoutClasses()).toContain('xl:grid-rows-1')
     expect(fixture.componentInstance.chatShellClasses()).toContain('rounded-none')
     expect(fixture.componentInstance.detailPanelShellClasses()).toContain('opacity-0')
 
@@ -421,9 +423,25 @@ describe('ClawXpertConversationDetailComponent', () => {
     const chatShell = fixture.nativeElement.querySelectorAll('section')[1]?.querySelector('div') as HTMLElement | null
 
     expect(fixture.componentInstance.workspaceLayoutClasses()).toContain('xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]')
+    expect(fixture.componentInstance.workspaceLayoutClasses()).toContain(
+      'grid-rows-[minmax(0,1fr)_minmax(24rem,32rem)]'
+    )
+    expect(fixture.componentInstance.workspaceLayoutClasses()).toContain('xl:grid-rows-1')
     expect(fixture.componentInstance.chatShellClasses()).toContain('xl:max-w-[32rem]')
     expect(fixture.componentInstance.detailPanelShellClasses()).toContain('opacity-100')
     expect(chatShell?.className).toContain('rounded-3xl')
+  })
+
+  it('allows the embedded chatkit to shrink within compact viewport heights', async () => {
+    const fixture = TestBed.createComponent(ClawXpertConversationDetailComponent)
+    await settle(fixture)
+
+    const chatkit = fixture.nativeElement.querySelector('xpert-chatkit') as HTMLElement | null
+    const chatkitClasses = Array.from(chatkit?.classList ?? [])
+
+    expect(chatkit).not.toBeNull()
+    expect(chatkitClasses).toEqual(expect.arrayContaining(['block', 'h-full', 'min-h-0']))
+    expect(chatkitClasses).not.toContain('min-h-[32rem]')
   })
 
   it('shows the empty detail-panel state when no thread conversation can be resolved', async () => {
