@@ -13,6 +13,7 @@ import {
     TChatRequest,
     TXpertCommandProfile,
     TXpertTeamDraft,
+    SecretTokenBindingType,
     xpertLabel
 } from '@xpert-ai/contracts'
 import {
@@ -27,6 +28,7 @@ import {
     UseValidationPipe,
     UUIDValidationPipe,
     Public,
+    SecretTokenService,
     TimeZone,
     UserService
 } from '@xpert-ai/server-core'
@@ -69,6 +71,7 @@ import { Request, Response } from 'express'
 import { Between, DeleteResult, IsNull, LessThanOrEqual, Like, Not } from 'typeorm'
 import { I18nLang, I18nService } from 'nestjs-i18n'
 import { v4 as uuidv4 } from 'uuid'
+import { randomBytes } from 'crypto'
 import { ChatConversation, XpertAgentExecution } from '../core/entities/internal'
 import { FindExecutionsByXpertQuery } from '../xpert-agent-execution/queries'
 import {
@@ -131,6 +134,7 @@ export class XpertController extends CrudController<Xpert> {
         private readonly storeService: CopilotStoreService,
         private readonly environmentService: EnvironmentService,
         private readonly userService: UserService,
+        private readonly secretTokenService: SecretTokenService,
         private readonly i18n: I18nService,
         private readonly promptWorkflowService: PromptWorkflowService,
         private readonly commandBus: CommandBus,
@@ -904,6 +908,82 @@ export class XpertController extends CrudController<Xpert> {
     }
 
     // Public App
+
+    @Public()
+    @Post(':identifier/chatkit-session')
+    async createPublicChatkitSession(
+        @Param('identifier') identifier: string,
+        @Body()
+        body: {
+            expires_after?: number
+            currentClientSecret?: string
+        },
+        @Res({ passthrough: true }) res: Response
+    ) {
+        const xpert = await this.service.findPublicChatAppXpert(identifier)
+        const anonymousId = this.getOrSetAnonymousId(res)
+        const anonymousUser = await this.userService.ensureCommunicationUser({
+            tenantId: xpert.tenantId,
+            thirdPartyId: `public-xpert:${xpert.id}:anonymous:${anonymousId}`,
+            username: `${xpert.slug || xpert.id}:${anonymousId}`
+        })
+
+        const token = `cs-x-${randomBytes(32).toString('hex')}`
+        const expiresAfter = this.normalizeChatkitSessionExpiresAfter(body?.expires_after)
+        const validUntil = new Date(Date.now() + 1000 * expiresAfter)
+
+        await this.secretTokenService.create({
+            entityId: xpert.id,
+            type: SecretTokenBindingType.PUBLIC_XPERT,
+            tenantId: xpert.tenantId,
+            organizationId: xpert.organizationId ?? null,
+            createdById: anonymousUser.id,
+            token,
+            validUntil
+        })
+
+        return {
+            client_secret: token,
+            expires_at: validUntil,
+            expires_after: expiresAfter,
+            xpertId: xpert.id,
+            assistantId: xpert.id,
+            organizationId: xpert.organizationId ?? null
+        }
+    }
+
+    private getOrSetAnonymousId(res: Response) {
+        const req = RequestContext.currentRequest() as unknown as Request
+        const existing = req?.cookies?.['anonymous.id']
+        if (typeof existing === 'string' && existing.trim()) {
+            return existing.trim()
+        }
+
+        const anonymousId = uuidv4()
+        const forwardedProto = req?.headers?.['x-forwarded-proto']
+        const isSecure =
+            req?.secure ||
+            forwardedProto === 'https' ||
+            (Array.isArray(forwardedProto) && forwardedProto.includes('https'))
+
+        res.cookie('anonymous.id', anonymousId, {
+            httpOnly: true,
+            maxAge: 365 * 24 * 60 * 60 * 1000,
+            sameSite: isSecure ? 'none' : 'lax',
+            secure: Boolean(isSecure)
+        })
+
+        return anonymousId
+    }
+
+    private normalizeChatkitSessionExpiresAfter(value: unknown) {
+        const parsed = typeof value === 'number' ? value : Number(value)
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return 600
+        }
+
+        return Math.min(Math.floor(parsed), 3600)
+    }
 
     @Public()
     @UseGuards(AnonymousXpertAuthGuard)

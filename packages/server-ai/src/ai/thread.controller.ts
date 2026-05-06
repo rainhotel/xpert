@@ -48,8 +48,13 @@ import { FindThreadQuery, SearchThreadsQuery } from './queries'
 import type { components } from './schemas/agent-protocol-schema'
 import { RedisSseStreamService, SseLockOwnerCandidate, SseLockSnapshot } from './stream/redis-sse.service'
 import { CancelConversationCommand } from '../chat-conversation'
+import { GetChatConversationQuery } from '../chat-conversation'
 import { CopilotUserUsageQuery } from '../copilot-user/queries'
 import { formatInUTC0 } from '../shared/utils'
+import {
+	assertPublicXpertSessionConversationAccess,
+	getPublicXpertSessionConversationScope
+} from './public-xpert-principal'
 
 @ApiTags('AI/Threads')
 @ApiBearerAuth()
@@ -93,11 +98,13 @@ export class ThreadsController {
 	@HttpCode(HttpStatus.ACCEPTED)
 	@Delete(':thread_id')
 	async deleteThread(@Param('thread_id') thread_id: string) {
+		await this.ensurePublicThreadAccess(thread_id)
 		return await this.commandBus.execute(new ThreadDeleteCommand(thread_id))
 	}
 
 	@Get(':thread_id/state')
 	async getThreadState(@Param('thread_id') thread_id: string, @Query() query: any) {
+		await this.ensurePublicThreadAccess(thread_id)
 		console.log(query)
 		const tuple = await this.queryBus.execute(
 			new CopilotCheckpointGetTupleQuery({
@@ -142,6 +149,7 @@ export class ThreadsController {
 		@Query('limit') limit: number,
 		@Query('offset') offset: number
 	) {
+		await this.ensurePublicThreadAccess(thread_id)
 		const result = await this.queryBus.execute(
 			new FindAgentExecutionsQuery({
 				where: {
@@ -369,6 +377,15 @@ export class ThreadsController {
 	) {
 		const endHour = end ?? formatInUTC0(new Date(), USAGE_HOUR_FORMAT)
 		return await this.queryBus.execute(new CopilotUserUsageQuery({ start, end: endHour, threadId }))
+	}
+
+	private async ensurePublicThreadAccess(threadId: string) {
+		if (!getPublicXpertSessionConversationScope()) {
+			return
+		}
+
+		const conversation = await this.queryBus.execute(new GetChatConversationQuery({ threadId }))
+		assertPublicXpertSessionConversationAccess(conversation)
 	}
 }
 

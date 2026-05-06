@@ -117,6 +117,58 @@ describe('PublishedXpertAccessService', () => {
         await expect(service.getAccessiblePublishedXpert('missing-xpert')).rejects.toThrow(NotFoundException)
     })
 
+    it('allows a public xpert principal to access only its bound public assistant', async () => {
+        ;(RequestContext.currentApiPrincipal as jest.Mock).mockReturnValue({
+            principalType: 'client_secret',
+            clientSecretBindingType: 'public_xpert',
+            apiKey: {
+                type: ApiKeyBindingType.ASSISTANT,
+                entityId: 'xpert-public-1'
+            }
+        })
+        ;(RequestContext.getOrganizationId as jest.Mock).mockReturnValue(null)
+
+        const repository = {
+            findOne: jest.fn().mockResolvedValue({
+                id: 'xpert-public-1',
+                tenantId: 'tenant-1',
+                organizationId: null,
+                publishAt: new Date(),
+                app: {
+                    enabled: true,
+                    public: true
+                }
+            }),
+            createQueryBuilder: jest.fn()
+        }
+        const service = new PublishedXpertAccessService(asXpertRepository(repository))
+
+        await expect(service.getAccessiblePublishedXpert('xpert-public-1')).resolves.toMatchObject({
+            id: 'xpert-public-1'
+        })
+        expect(repository.createQueryBuilder).not.toHaveBeenCalled()
+    })
+
+    it('rejects a public xpert principal for another assistant', async () => {
+        ;(RequestContext.currentApiPrincipal as jest.Mock).mockReturnValue({
+            principalType: 'client_secret',
+            clientSecretBindingType: 'public_xpert',
+            apiKey: {
+                type: ApiKeyBindingType.ASSISTANT,
+                entityId: 'xpert-public-1'
+            }
+        })
+
+        const repository = {
+            findOne: jest.fn(),
+            createQueryBuilder: jest.fn()
+        }
+        const service = new PublishedXpertAccessService(asXpertRepository(repository))
+
+        await expect(service.getAccessiblePublishedXpert('xpert-public-2')).rejects.toThrow(ForbiddenException)
+        expect(repository.findOne).not.toHaveBeenCalled()
+    })
+
     it('allows workspace members to access a published xpert without a user-group grant', async () => {
         const repository = {
             findOne: jest.fn().mockResolvedValue({

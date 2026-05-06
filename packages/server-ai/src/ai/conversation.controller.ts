@@ -33,6 +33,10 @@ import { ThreadDeleteCommand } from './commands'
 import { ChatMessageDTO, ChatMessageFeedbackDTO, ConversationDTO } from './dto'
 import { ChatConversation, ChatMessage, ChatMessageFeedback } from '../core/entities/internal'
 import { RequestContext } from '@xpert-ai/plugin-sdk'
+import {
+	assertPublicXpertSessionConversationAccess,
+	getPublicXpertSessionConversationScope
+} from './public-xpert-principal'
 
 type ConversationSearchRequest = {
 	where?: Record<string, OperatorValue>
@@ -72,9 +76,11 @@ export class ConversationsController {
 
 	@Post()
 	async createConversation(@Body() body: Partial<IChatConversation>) {
+		const publicScope = getPublicXpertSessionConversationScope()
 		const conversation = await this.commandBus.execute(
 			new ChatConversationUpsertCommand({
 				...body,
+				...(publicScope ? { createdById: publicScope.createdById, xpertId: publicScope.xpertId } : {}),
 				from: body.from ?? 'api'
 			})
 		)
@@ -92,6 +98,11 @@ export class ConversationsController {
 		if (currentUser) {
 			where['createdById'] = currentUser
 		}
+		const publicScope = getPublicXpertSessionConversationScope()
+		if (publicScope) {
+			where['createdById'] = publicScope.createdById
+			where['xpertId'] = publicScope.xpertId
+		}
 		const result = await this.conversationService.findAllInOrganizationOrTenant({
 			where,
 			order: body.order,
@@ -107,6 +118,7 @@ export class ConversationsController {
 	@Get(':conversation_id')
 	async getConversation(@Param('conversation_id', UUIDValidationPipe) id: string) {
 		const conversation = await this.conversationService.findOneInOrganizationOrTenant(id)
+		assertPublicXpertSessionConversationAccess(conversation)
 		return new ConversationDTO(conversation)
 	}
 
@@ -115,8 +127,16 @@ export class ConversationsController {
 		@Param('conversation_id', UUIDValidationPipe) id: string,
 		@Body() body: Partial<IChatConversation>
 	) {
-		await this.conversationService.findOneInOrganizationOrTenant(id)
-		const conversation = await this.commandBus.execute(new ChatConversationUpsertCommand({ ...body, id }))
+		const existing = await this.conversationService.findOneInOrganizationOrTenant(id)
+		assertPublicXpertSessionConversationAccess(existing)
+		const publicScope = getPublicXpertSessionConversationScope()
+		const conversation = await this.commandBus.execute(
+			new ChatConversationUpsertCommand({
+				...body,
+				id,
+				...(publicScope ? { createdById: publicScope.createdById, xpertId: publicScope.xpertId } : {})
+			})
+		)
 		return new ConversationDTO(conversation)
 	}
 
@@ -124,6 +144,7 @@ export class ConversationsController {
 	@Delete(':conversation_id')
 	async deleteConversation(@Param('conversation_id', UUIDValidationPipe) id: string) {
 		const conversation = await this.conversationService.findOneInOrganizationOrTenant(id)
+		assertPublicXpertSessionConversationAccess(conversation)
 		await this.commandBus.execute(new ThreadDeleteCommand(conversation.threadId))
 	}
 
@@ -133,7 +154,8 @@ export class ConversationsController {
 		@Query('limit') limit?: number,
 		@Query('offset') offset?: number
 	) {
-		await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		const conversation = await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		assertPublicXpertSessionConversationAccess(conversation)
 		const result = await this.messageService.findAllInOrganizationOrTenant({
 			where: { conversationId },
 			order: { createdAt: 'ASC' },
@@ -152,7 +174,8 @@ export class ConversationsController {
 		@Param('conversation_id', UUIDValidationPipe) conversationId: string,
 		@Body() body: MessageSearchRequest
 	) {
-		await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		const conversation = await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		assertPublicXpertSessionConversationAccess(conversation)
 		const where = {
 			...transformWhere(body.where ?? {}),
 			conversationId
@@ -174,10 +197,13 @@ export class ConversationsController {
 		@Param('conversation_id', UUIDValidationPipe) conversationId: string,
 		@Body() body: Partial<IChatMessage>
 	) {
-		await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		const conversation = await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		assertPublicXpertSessionConversationAccess(conversation)
+		const publicScope = getPublicXpertSessionConversationScope()
 		const message = await this.commandBus.execute(
 			new ChatMessageUpsertCommand({
 				...body,
+				...(publicScope ? { createdById: publicScope.createdById } : {}),
 				conversationId
 			})
 		)
@@ -189,6 +215,7 @@ export class ConversationsController {
 		@Param('conversation_id', UUIDValidationPipe) conversationId: string,
 		@Param('message_id', UUIDValidationPipe) messageId: string
 	) {
+		await this.ensurePublicConversationAccess(conversationId)
 		const message = await this.messageService.findOneInOrganizationOrTenant(messageId, { where: { conversationId } })
 		return new ChatMessageDTO(message)
 	}
@@ -199,6 +226,7 @@ export class ConversationsController {
 		@Param('message_id', UUIDValidationPipe) messageId: string,
 		@Body() body: Partial<IChatMessage>
 	) {
+		await this.ensurePublicConversationAccess(conversationId)
 		await this.messageService.findOneInOrganizationOrTenant(messageId, { where: { conversationId } })
 		const message = await this.commandBus.execute(
 			new ChatMessageUpsertCommand({
@@ -216,6 +244,7 @@ export class ConversationsController {
 		@Param('conversation_id', UUIDValidationPipe) conversationId: string,
 		@Param('message_id', UUIDValidationPipe) messageId: string
 	) {
+		await this.ensurePublicConversationAccess(conversationId)
 		await this.messageService.findOneInOrganizationOrTenant(messageId, { where: { conversationId } })
 		await this.messageService.delete(messageId)
 	}
@@ -272,8 +301,10 @@ export class ConversationsController {
 		@Body() body: Partial<IChatMessageFeedback>
 	) {
 		await this.ensureMessage(conversationId, messageId)
+		const publicScope = getPublicXpertSessionConversationScope()
 		const feedback = await this.feedbackService.create({
 			...body,
+			...(publicScope ? { createdById: publicScope.createdById } : {}),
 			conversationId,
 			messageId
 		})
@@ -287,6 +318,7 @@ export class ConversationsController {
 		@Param('message_id', UUIDValidationPipe) messageId: string,
 		@Param('feedback_id', UUIDValidationPipe) feedbackId: string
 	) {
+		await this.ensureMessage(conversationId, messageId)
 		const feedback = await this.feedbackService.findOneInOrganizationOrTenant(feedbackId, { where: { conversationId, messageId } })
 		return new ChatMessageFeedbackDTO(feedback)
 	}
@@ -298,6 +330,7 @@ export class ConversationsController {
 		@Param('feedback_id', UUIDValidationPipe) feedbackId: string,
 		@Body() body: Partial<IChatMessageFeedback>
 	) {
+		await this.ensureMessage(conversationId, messageId)
 		await this.feedbackService.findOneInOrganizationOrTenant(feedbackId, { where: { conversationId, messageId } })
 		await this.feedbackService.update(feedbackId, {
 			...body,
@@ -316,12 +349,19 @@ export class ConversationsController {
 		@Param('message_id', UUIDValidationPipe) messageId: string,
 		@Param('feedback_id', UUIDValidationPipe) feedbackId: string
 	) {
+		await this.ensureMessage(conversationId, messageId)
 		await this.feedbackService.findOneInOrganizationOrTenant(feedbackId, { where: { conversationId, messageId } })
 		await this.feedbackService.delete(feedbackId)
 	}
 
+	private async ensurePublicConversationAccess(conversationId: string) {
+		const conversation = await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		assertPublicXpertSessionConversationAccess(conversation)
+		return conversation
+	}
+
 	private async ensureMessage(conversationId: string, messageId: string) {
-		await this.conversationService.findOneInOrganizationOrTenant(conversationId)
+		await this.ensurePublicConversationAccess(conversationId)
 		return this.messageService.findOneInOrganizationOrTenant(messageId, { where: { conversationId } })
 	}
 }

@@ -1,7 +1,9 @@
 import {
 	ApiKeyBindingType,
+	IApiPrincipal,
 	IUser,
 	RolesEnum,
+	SecretTokenBindingType,
 	TXpertWorkspaceCapabilities,
 	isTenantSharedXpertWorkspace
 } from '@xpert-ai/contracts'
@@ -250,30 +252,48 @@ export class XpertWorkspaceAccessService {
 	}
 
 	private async currentApiKeyBoundWorkspaceIdForUser(user?: IUser | null) {
-		const apiPrincipal = RequestContext.currentApiPrincipal()
+		const apiPrincipal = RequestContext.currentApiPrincipal() as IApiPrincipal | null
 		const apiKey = apiPrincipal?.apiKey
 		const entityId = apiKey?.entityId?.trim()
 		const userId = user?.id
 		const tenantId = user?.tenantId
+		const isPublicXpertClientSecret =
+			apiPrincipal?.principalType === 'client_secret' &&
+			apiPrincipal.clientSecretBindingType === SecretTokenBindingType.PUBLIC_XPERT
 
-		if (apiKey?.type === ApiKeyBindingType.WORKSPACE) {
+		if (!isPublicXpertClientSecret && apiKey?.type === ApiKeyBindingType.WORKSPACE) {
 			return entityId || null
 		}
 
-		if (apiKey?.type !== ApiKeyBindingType.ASSISTANT || !entityId || !userId || !tenantId) {
+		if (apiKey?.type !== ApiKeyBindingType.ASSISTANT || !entityId || !tenantId) {
 			return null
 		}
 
-		const xpert = await this.workspaceRepository.manager
+		if (!isPublicXpertClientSecret && !userId) {
+			return null
+		}
+
+		const query = this.workspaceRepository.manager
 			.createQueryBuilder()
 			.select('xpert."workspaceId"', 'workspaceId')
 			.addSelect('xpert."userId"', 'userId')
 			.from('xpert', 'xpert')
 			.where('xpert.id = :xpertId', { xpertId: entityId })
 			.andWhere('xpert."tenantId" = :tenantId', { tenantId })
-			.limit(1)
-			.getRawOne<{ workspaceId?: string | null; userId?: string | null }>()
-		if (!xpert?.workspaceId || xpert.userId !== userId) {
+
+		if (isPublicXpertClientSecret) {
+			query
+				.andWhere('xpert."publishAt" IS NOT NULL')
+				.andWhere(`COALESCE((xpert.app)::jsonb ->> 'enabled', 'false') = 'true'`)
+				.andWhere(`COALESCE((xpert.app)::jsonb ->> 'public', 'false') = 'true'`)
+		}
+
+		const xpert = await query.limit(1).getRawOne<{ workspaceId?: string | null; userId?: string | null }>()
+		if (!xpert?.workspaceId) {
+			return null
+		}
+
+		if (!isPublicXpertClientSecret && xpert.userId !== userId) {
 			return null
 		}
 

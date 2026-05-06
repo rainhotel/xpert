@@ -1,4 +1,4 @@
-import { ApiKeyBindingType, IApiPrincipal, IUser, RolesEnum } from '@xpert-ai/contracts'
+import { ApiKeyBindingType, IApiPrincipal, IUser, RolesEnum, SecretTokenBindingType } from '@xpert-ai/contracts'
 import { RequestContext } from '@xpert-ai/server-core'
 import { Repository } from 'typeorm'
 import { XpertWorkspaceAccessService } from './workspace-access.service'
@@ -146,6 +146,49 @@ describe('XpertWorkspaceAccessService', () => {
 		})
 	})
 
+	it('allows public xpert client secrets to read and run their bound workspace', async () => {
+		const principal = {
+			id: 'anonymous-user-1',
+			tenantId: 'tenant-1',
+			role: { name: RolesEnum.VIEWER },
+			apiKey: {
+				type: ApiKeyBindingType.ASSISTANT,
+				entityId: 'xpert-1'
+			},
+			principalType: 'client_secret',
+			clientSecretBindingType: SecretTokenBindingType.PUBLIC_XPERT
+		} as IApiPrincipal
+		;(RequestContext.currentUser as jest.Mock).mockReturnValue(principal)
+		;(RequestContext.currentApiPrincipal as jest.Mock).mockReturnValue(principal)
+		xpertQueryBuilder.getRawOne.mockResolvedValue({
+			userId: 'assistant-service-user-1',
+			workspaceId: 'workspace-1'
+		})
+
+		const workspace = Object.assign(new XpertWorkspace(), {
+			id: 'workspace-1',
+			tenantId: 'tenant-1',
+			organizationId: 'org-1',
+			ownerId: 'owner-1',
+			settings: { access: { visibility: 'private' } },
+			members: []
+		})
+
+		await expect(service.getCapabilities(workspace)).resolves.toEqual({
+			canRead: true,
+			canRun: true,
+			canWrite: false,
+			canManage: false
+		})
+		expect(xpertQueryBuilder.andWhere).toHaveBeenCalledWith('xpert."publishAt" IS NOT NULL')
+		expect(xpertQueryBuilder.andWhere).toHaveBeenCalledWith(
+			`COALESCE((xpert.app)::jsonb ->> 'enabled', 'false') = 'true'`
+		)
+		expect(xpertQueryBuilder.andWhere).toHaveBeenCalledWith(
+			`COALESCE((xpert.app)::jsonb ->> 'public', 'false') = 'true'`
+		)
+	})
+
 	it('allows workspace api keys to read and run their bound workspace', async () => {
 		const principal = {
 			id: 'owner-1',
@@ -176,6 +219,42 @@ describe('XpertWorkspaceAccessService', () => {
 			canManage: false
 		})
 		expect(workspaceRepository.manager.createQueryBuilder).not.toHaveBeenCalled()
+	})
+
+	it('does not grant public xpert client secrets access to other workspaces', async () => {
+		const principal = {
+			id: 'anonymous-user-1',
+			tenantId: 'tenant-1',
+			role: { name: RolesEnum.VIEWER },
+			apiKey: {
+				type: ApiKeyBindingType.ASSISTANT,
+				entityId: 'xpert-1'
+			},
+			principalType: 'client_secret',
+			clientSecretBindingType: SecretTokenBindingType.PUBLIC_XPERT
+		} as IApiPrincipal
+		;(RequestContext.currentUser as jest.Mock).mockReturnValue(principal)
+		;(RequestContext.currentApiPrincipal as jest.Mock).mockReturnValue(principal)
+		xpertQueryBuilder.getRawOne.mockResolvedValue({
+			userId: 'assistant-service-user-1',
+			workspaceId: 'workspace-2'
+		})
+
+		const workspace = Object.assign(new XpertWorkspace(), {
+			id: 'workspace-1',
+			tenantId: 'tenant-1',
+			organizationId: 'org-1',
+			ownerId: 'owner-1',
+			settings: { access: { visibility: 'private' } },
+			members: []
+		})
+
+		await expect(service.getCapabilities(workspace)).resolves.toEqual({
+			canRead: false,
+			canRun: false,
+			canWrite: false,
+			canManage: false
+		})
 	})
 
 	it('does not grant workspace api key access to other workspaces', async () => {

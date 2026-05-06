@@ -38,6 +38,8 @@ import { XpertPublishCommand } from './commands'
 import { XpertIdentiDto } from './dto'
 import { GetXpertMemoryEmbeddingsQuery } from './queries'
 import { EventNameXpertValidate, XpertDraftValidateEvent } from './types'
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 import { FreeNodeValidator } from './validators'
 import { Xpert } from './xpert.entity'
 
@@ -400,6 +402,35 @@ export class XpertService extends XpertWorkspaceBaseService<Xpert> {
             },
             relations: uniq((relations ?? []).concat(['user', 'createdBy', 'organization']))
         })
+    }
+
+    async findPublicChatAppXpert(identifier: string, relations?: string[]) {
+        const normalized = identifier?.trim()
+        if (!normalized) {
+            throw new NotFoundException(`Not found public xpert '${identifier}'`)
+        }
+
+        const where = UUID_PATTERN.test(normalized)
+            ? {
+                  id: normalized,
+                  publishAt: Not(IsNull())
+              }
+            : {
+                  slug: normalized,
+                  latest: true,
+                  publishAt: Not(IsNull())
+              }
+
+        const xpert = await this.repository.findOne({
+            where,
+            relations: uniq((relations ?? []).concat(['user', 'createdBy', 'organization', 'workspace']))
+        })
+
+        if (!xpert?.app?.enabled || !xpert.app.public) {
+            throw new NotFoundException(`Not found public xpert '${identifier}'`)
+        }
+
+        return xpert
     }
 
     async createMemory(xpertId: string, body: { type: LongTermMemoryTypeEnum; value: TMemoryQA | TMemoryUserProfile }) {

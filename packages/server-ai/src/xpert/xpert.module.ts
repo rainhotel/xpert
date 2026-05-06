@@ -2,7 +2,7 @@ import { forwardRef, Module } from '@nestjs/common'
 import { CqrsModule } from '@nestjs/cqrs'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { DiscoveryModule, RouterModule } from '@nestjs/core'
-import { RedisModule, TenantModule, UserGroupModule, UserModule } from '@xpert-ai/server-core'
+import { RedisModule, SecretTokenModule, TenantModule, UserGroupModule, UserModule } from '@xpert-ai/server-core'
 import { XpertController } from './xpert.controller'
 import { Xpert } from './xpert.entity'
 import { XpertService } from './xpert.service'
@@ -35,6 +35,7 @@ import { PromptWorkflowModule } from '../prompt-workflow'
         TypeOrmModule.forFeature([Xpert]),
         DiscoveryModule,
         TenantModule,
+        SecretTokenModule,
         CqrsModule,
         RedisModule,
         forwardRef(() => KnowledgebaseModule),
