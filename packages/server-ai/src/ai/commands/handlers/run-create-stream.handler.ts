@@ -8,6 +8,7 @@ import {
     IXpert,
     isTenantSharedXpertWorkspace,
     RequestScopeLevel,
+    SecretTokenBindingType,
     TChatRequest as TChatRequestV2,
     XpertAgentExecutionStatusEnum
 } from '@xpert-ai/contracts'
@@ -27,6 +28,7 @@ import { XpertAgentExecutionUpsertCommand } from '../../../xpert-agent-execution
 import { XpertAgentExecutionOneQuery } from '../../../xpert-agent-execution/queries'
 import { RunCreateStreamCommand } from '../run-create-stream.command'
 import { RedisSseStreamService } from '../../stream/redis-sse.service'
+import { assertPublicXpertSessionConversationAccess } from '../../public-xpert-principal'
 import { RequestContext } from '@xpert-ai/plugin-sdk'
 
 const humanInputSchema = z.object({}).passthrough()
@@ -337,6 +339,13 @@ function applyAssistantPrincipalToCurrentRequest(
         return
     }
 
+    if (
+        currentUser?.principalType === 'client_secret' &&
+        currentUser.clientSecretBindingType === SecretTokenBindingType.PUBLIC_XPERT
+    ) {
+        return
+    }
+
     // An explicit x-principal-user-id represents the business user for this
     // request and must not be overwritten by the xpert technical principal.
     if (currentUser?.requestedUserId) {
@@ -421,6 +430,7 @@ export class RunCreateStreamHandler implements ICommandHandler<RunCreateStreamCo
 
         // Find thread (conversation) and assistant (xpert)
         const conversation = await this.queryBus.execute(new GetChatConversationQuery({ threadId }))
+        assertPublicXpertSessionConversationAccess(conversation)
         const xpert = await this.resolveAssistantForRun(runCreate.assistant_id)
         applyAssistantScope(xpert)
         const chatRequest = validateRunCreateInput(runCreate.input, conversation)

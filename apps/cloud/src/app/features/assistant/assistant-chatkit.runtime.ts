@@ -41,8 +41,10 @@ type AssistantHostedChatKitOptions = Omit<AssistantChatKitOptions, 'api'> &
 type AssistantRuntimeInput = {
   assistantCode: Signal<AssistantCode | null>
   requestContext?: Signal<Record<string, unknown> | null>
+  displayMode?: AssistantHostedChatKitOptions['displayMode']
   history?: AssistantHostedChatKitOptions['history']
   initialThread?: Signal<string | null>
+  pet?: AssistantHostedChatKitOptions['pet']
   titleKey: string
   titleDefault: string
   onReady?: NonNullable<AssistantChatKitEventHandlers['onReady']>
@@ -64,8 +66,10 @@ type AssistantHostedRuntimeInput = {
   assistantId: Signal<string | null>
   frameUrl: Signal<string | null>
   requestContext?: Signal<Record<string, unknown> | null>
+  displayMode?: AssistantHostedChatKitOptions['displayMode']
   history?: AssistantHostedChatKitOptions['history']
   initialThread?: Signal<string | null>
+  pet?: AssistantHostedChatKitOptions['pet']
   titleKey: string
   titleDefault: string
   onReady?: NonNullable<AssistantChatKitEventHandlers['onReady']>
@@ -90,8 +94,10 @@ export function injectAssistantChatkitRuntime(input: AssistantRuntimeInput) {
     assistantId: computed(() => config()?.assistantId ?? null),
     frameUrl,
     requestContext: input.requestContext,
+    displayMode: input.displayMode,
     history: input.history,
     initialThread: input.initialThread,
+    pet: input.pet,
     titleKey: input.titleKey,
     titleDefault: input.titleDefault,
     onReady: input.onReady,
@@ -275,6 +281,8 @@ export function injectHostedAssistantChatkitControl(input: AssistantHostedRuntim
       },
       locale: currentLocale,
       theme: currentTheme,
+      displayMode: input.displayMode,
+      pet: input.pet,
       initialThread,
       header: {
         title: {

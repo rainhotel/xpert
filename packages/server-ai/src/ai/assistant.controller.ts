@@ -24,11 +24,13 @@ import { AssistantBindingService } from '../assistant-binding'
 import { PublishedXpertAccessService } from '../xpert'
 import { SkillPackageService } from '../skill-package'
 import { SKILLS_MIDDLEWARE_NAME } from '../skill-package/types'
+import { PromptWorkflowService } from '../prompt-workflow'
 import {
     getAgentSubAgentConnections,
     getSubAgentConnectionTargetKey,
     isRequiredSubAgentConnection
 } from '../shared/agent/sub-agent'
+import { RuntimeCommandService } from './runtime-command.service'
 
 const ASSISTANT_RELATIONS = ['agent', 'agent.copilotModel', 'copilotModel']
 
@@ -45,7 +47,9 @@ export class AssistantsController {
         private readonly publishedXpertAccessService: PublishedXpertAccessService,
         private readonly assistantBindingService: AssistantBindingService,
         private readonly agentMiddlewareRegistry: AgentMiddlewareRegistry,
-        private readonly skillPackageService: SkillPackageService
+        private readonly skillPackageService: SkillPackageService,
+        private readonly runtimeCommandService: RuntimeCommandService,
+        private readonly promptWorkflowService: PromptWorkflowService
     ) {}
 
     @Post('search')
@@ -129,16 +133,59 @@ export class AssistantsController {
             })
             .filter((item): item is NonNullable<typeof item> => !!item)
 
-        const skills =
+        const runtimeSkills =
             hasSkillsMiddleware && xpert.workspaceId
                 ? await this.getRuntimeSkills(xpert.workspaceId, defaultSkillSelection)
-                : []
+                : { skills: [], commands: [] }
         const subAgents = agentKey && graph ? collectRuntimeSubAgents(graph, agentKey) : []
+        const commandAllowList = {
+            workspaceId: xpert.workspaceId,
+            skillIds: runtimeSkills.skills.map((skill) => skill.id),
+            pluginNodeKeys: plugins.map((plugin) => plugin.nodeKey),
+            subAgentNodeKeys: subAgents.map((subAgent) => subAgent.nodeKey)
+        }
+        const commandProfile = await this.promptWorkflowService.resolveRuntimeCommandProfile(xpert)
+        const xpertCommands = this.runtimeCommandService.normalizePromptWorkflowRuntimeSlashCommands(
+            commandProfile.xpertCommands,
+            {
+                sourceType: 'xpert',
+                workspaceId: xpert.workspaceId,
+                label: xpert.title ?? xpert.name,
+                allowList: commandAllowList
+            }
+        )
+        const workspaceCommands = this.runtimeCommandService.normalizePromptWorkflowRuntimeSlashCommands(
+            commandProfile.workspaceCommands,
+            {
+                sourceType: 'workspace_prompt_workflow',
+                workspaceId: xpert.workspaceId,
+                label: xpert.title ?? xpert.name,
+                allowList: commandAllowList
+            }
+        )
+        const preferredSkillCommands = commandProfile.hasProfile
+            ? this.runtimeCommandService.selectProfileSkillRuntimeSlashCommands(
+                  runtimeSkills.commands,
+                  commandProfile.preferredSkillEntries
+              )
+            : []
+        const skillCommands = commandProfile.hasProfile
+            ? this.runtimeCommandService.selectProfileSkillRuntimeSlashCommands(
+                  runtimeSkills.commands,
+                  commandProfile.skillEntries
+              )
+            : runtimeSkills.commands
 
         return {
-            skills,
+            skills: runtimeSkills.skills,
             plugins,
-            subAgents
+            subAgents,
+            commands: this.runtimeCommandService.mergeRuntimeSlashCommands([
+                xpertCommands,
+                preferredSkillCommands,
+                workspaceCommands,
+                skillCommands
+            ])
         }
     }
 
@@ -152,7 +199,7 @@ export class AssistantsController {
             RequestContext.currentUser()
         )
 
-        return (result.items ?? []).map((skill) => {
+        const skills = (result.items ?? []).map((skill) => {
             const skillIndex = skill.skillIndex
             const repositoryId = skillIndex?.repositoryId ?? skillIndex?.repository?.id
             const runtimeMeta = omitBy(
@@ -180,6 +227,14 @@ export class AssistantsController {
                 ...(isDefault ? { default: true } : {})
             }
         })
+        const commands = (result.items ?? []).flatMap((skill) =>
+            this.runtimeCommandService.normalizeSkillRuntimeSlashCommands(skill, {
+                workspaceId,
+                label: resolveI18nText(skill.name, skill.skillIndex?.name ?? skill.skillIndex?.skillId ?? skill.id)
+            })
+        )
+
+        return { skills, commands }
     }
 }
 
@@ -217,9 +272,8 @@ function collectDefaultSkillSelection(
         }
 
         const repositoryDefault = asRecord(options?.repositoryDefault)
-        const repositoryId = typeof repositoryDefault?.repositoryId === 'string'
-            ? repositoryDefault.repositoryId.trim()
-            : ''
+        const repositoryId =
+            typeof repositoryDefault?.repositoryId === 'string' ? repositoryDefault.repositoryId.trim() : ''
         if (repositoryId) {
             repositoryDefaults.push({
                 repositoryId,
@@ -325,7 +379,9 @@ function collectAgentResourceDetails(graph: TXpertGraph, agentKey: string) {
         .filter((node): node is TXpertTeamNode<'knowledge'> => node?.type === 'knowledge')
 
     return {
-        toolNames: uniqueStrings(toolsetNodes.flatMap((node) => getEnabledTools(node.entity)?.map((tool) => tool.name) ?? [])),
+        toolNames: uniqueStrings(
+            toolsetNodes.flatMap((node) => getEnabledTools(node.entity)?.map((tool) => tool.name) ?? [])
+        ),
         toolsetNames: uniqueStrings(toolsetNodes.map((node) => node.entity.name ?? node.key)),
         knowledgebaseNames: uniqueStrings(knowledgeNodes.map((node) => node.entity.name ?? node.key))
     }
@@ -333,9 +389,13 @@ function collectAgentResourceDetails(graph: TXpertGraph, agentKey: string) {
 
 function collectXpertResourceDetails(xpert: IXpert) {
     return {
-        toolNames: uniqueStrings((xpert.toolsets ?? []).flatMap((toolset) => getEnabledTools(toolset)?.map((tool) => tool.name) ?? [])),
+        toolNames: uniqueStrings(
+            (xpert.toolsets ?? []).flatMap((toolset) => getEnabledTools(toolset)?.map((tool) => tool.name) ?? [])
+        ),
         toolsetNames: uniqueStrings((xpert.toolsets ?? []).map((toolset) => toolset.name ?? toolset.id)),
-        knowledgebaseNames: uniqueStrings((xpert.knowledgebases ?? []).map((knowledgebase) => knowledgebase.name ?? knowledgebase.id))
+        knowledgebaseNames: uniqueStrings(
+            (xpert.knowledgebases ?? []).map((knowledgebase) => knowledgebase.name ?? knowledgebase.id)
+        )
     }
 }
 
@@ -353,11 +413,7 @@ function normalizeStringArray(value: unknown): string[] {
     }
 
     return Array.from(
-        new Set(
-            value
-                .map((item) => (typeof item === 'string' ? item.trim() : ''))
-                .filter((item) => item.length > 0)
-        )
+        new Set(value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter((item) => item.length > 0))
     )
 }
 

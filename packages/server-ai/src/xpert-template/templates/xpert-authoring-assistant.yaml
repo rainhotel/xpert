@@ -333,6 +333,7 @@ nodes:
         - For task-based sub-agents:
           - main -> task uses connection type `workflow`
           - task -> child agent uses connection type `agent`
+          - every task -> child agent connection has `required: true`
           - child agent `name` must match the runtime `subagent_type`
           - use stable child names such as `explore`, `implement`, `review`
           - set each child `leaderKey` to the task node key
@@ -342,6 +343,7 @@ nodes:
           - each listed middleware key resolves to a workflow node with `type: workflow` and `entity.type: middleware`
           - each middleware node has `entity.key` equal to its node key
           - each middleware node has `entity.provider` equal to the exact provider name
+          - each middleware node has `entity.required: true`
           - a `type: workflow` connection exists from the agent key to each middleware node key
         - Do not verify middleware by checking a standalone `entity.middlewares`
         field.
@@ -401,7 +403,8 @@ nodes:
 
         - Verify that each middleware key in that order resolves to a workflow
         node whose `entity.type` is exactly `middleware` and whose
-        `entity.provider` exactly matches the requested provider name.
+        `entity.provider` exactly matches the requested provider name and whose
+        `entity.required` is `true`.
 
         - Verify that a `type: workflow` connection exists from the target agent
         key to each middleware node key.
@@ -422,17 +425,19 @@ nodes:
           - exactly one task node for sub-agent dispatch
           - child agents whose `name` values are `explore`, `implement`, and `review`
           - one `main -> task` workflow connection
-          - three `task -> child` agent connections
+          - three `task -> child` agent connections with `required: true`
         - If the request asks for `XpertAuthoringMiddleware`,
         `todoListMiddleware`, or `SummarizationMiddleware` on the main agent,
         each one must appear in the main agent node
         `entity.options.middlewares.order`, must exist as a middleware node, and
-        must be connected to the main agent with a `type: workflow` connection.
+        must have `entity.required: true`, and must be connected to the main
+        agent with a `type: workflow` connection.
 
         - If the request asks for `SandboxShell` on the implement agent, it must
         appear in the implement agent node `entity.options.middlewares.order`,
-        must exist as a middleware node, and must be connected to the implement
-        agent with a `type: workflow` connection.
+        must exist as a middleware node, must have `entity.required: true`, and
+        must be connected to the implement agent with a `type: workflow`
+        connection.
 
         - If a requested optional resource is not found, skip it cleanly instead
         of inventing a placeholder.
@@ -568,6 +573,7 @@ nodes:
       key: Middleware_W5fHgswzXV
       title: XpertAuthoringMiddleware
       provider: XpertAuthoringMiddleware
+      required: true
   - type: workflow
     key: Middleware_1hHK0MaBki
     position:
@@ -579,6 +585,7 @@ nodes:
       key: Middleware_1hHK0MaBki
       title: WebTools
       provider: WebTools
+      required: true
   - type: workflow
     key: Middleware_KVCxpRxQTo
     position:
@@ -590,6 +597,7 @@ nodes:
       key: Middleware_KVCxpRxQTo
       title: ModelRetryMiddleware
       provider: ModelRetryMiddleware
+      required: true
   - type: workflow
     key: Middleware_e8YHkPz0VI
     position:
@@ -601,6 +609,7 @@ nodes:
       key: Middleware_e8YHkPz0VI
       title: DanglingToolCallMiddleware
       provider: DanglingToolCallMiddleware
+      required: true
   - type: workflow
     key: Middleware_GQZGTxlvXe
     position:
@@ -612,6 +621,7 @@ nodes:
       key: Middleware_GQZGTxlvXe
       title: LoopGuardMiddleware
       provider: LoopGuardMiddleware
+      required: true
   - type: workflow
     key: Middleware_4bIpVwP4Tk
     position:
@@ -623,6 +633,7 @@ nodes:
       key: Middleware_4bIpVwP4Tk
       title: ViewImageMiddleware
       provider: ViewImageMiddleware
+      required: true
   - type: workflow
     key: Middleware_OuI263RdnH
     position:
@@ -634,6 +645,7 @@ nodes:
       key: Middleware_OuI263RdnH
       title: ContextCompressionMiddleware
       provider: ContextCompressionMiddleware
+      required: true
   - type: workflow
     key: Middleware_kibqEAnfAH
     position:
@@ -645,6 +657,7 @@ nodes:
       key: Middleware_kibqEAnfAH
       title: SandboxShell
       provider: SandboxShell
+      required: true
   - type: workflow
     key: Middleware_0ZHQnI6GD8
     position:
@@ -656,6 +669,7 @@ nodes:
       key: Middleware_0ZHQnI6GD8
       title: SandboxFile
       provider: SandboxFile
+      required: true
   - type: workflow
     key: Middleware_3Fc7LSAypv
     position:
@@ -667,6 +681,7 @@ nodes:
       key: Middleware_3Fc7LSAypv
       title: FileMemorySystemMiddleware
       provider: FileMemorySystemMiddleware
+      required: true
   - type: workflow
     key: Middleware_508rxLZJ7Q
     position:
@@ -678,6 +693,7 @@ nodes:
       key: Middleware_508rxLZJ7Q
       title: skillsMiddleware
       provider: skillsMiddleware
+      required: true
       options:
         repositoryDefault:
           repositoryId: b753df01-a609-4c07-97a1-fb668d121fcb

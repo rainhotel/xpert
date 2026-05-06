@@ -1,4 +1,5 @@
-import { IXpertAgent, TXpertTeamDraft } from './xpert.model'
+import { IXpertAgent } from './xpert-agent.model'
+import { TXpertTeamDraft } from './xpert.model'
 import { replaceAgentInDraft } from './xpert.utils'
 
 describe('xpert utils', () => {

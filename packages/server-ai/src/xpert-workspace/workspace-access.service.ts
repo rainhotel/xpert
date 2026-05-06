@@ -1,6 +1,9 @@
 import {
+	ApiKeyBindingType,
+	IApiPrincipal,
 	IUser,
 	RolesEnum,
+	SecretTokenBindingType,
 	TXpertWorkspaceCapabilities,
 	isTenantSharedXpertWorkspace
 } from '@xpert-ai/contracts'
@@ -101,7 +104,7 @@ export class XpertWorkspaceAccessService {
 				})
 			)
 
-		this.applyCurrentReadScope(query, user)
+		await this.applyCurrentReadScope(query, user)
 
 		Object.entries(orderBy ?? {}).forEach(([field, direction]) => {
 			query.addOrderBy(`workspace.${field}`, this.normalizeOrderDirection(direction))
@@ -110,8 +113,8 @@ export class XpertWorkspaceAccessService {
 		return query.getMany()
 	}
 
-	buildAccess(workspace: XpertWorkspace): XpertWorkspaceAccessResult {
-		const capabilities = this.getCapabilities(workspace)
+	async buildAccess(workspace: XpertWorkspace): Promise<XpertWorkspaceAccessResult> {
+		const capabilities = await this.getCapabilities(workspace)
 		const isTenantShared = isTenantSharedXpertWorkspace(workspace)
 		return {
 			workspace: {
@@ -124,7 +127,7 @@ export class XpertWorkspaceAccessService {
 		}
 	}
 
-	getCapabilities(workspace: XpertWorkspace): TXpertWorkspaceCapabilities {
+	async getCapabilities(workspace: XpertWorkspace): Promise<TXpertWorkspaceCapabilities> {
 		const user = RequestContext.currentUser()
 		const tenantId = user?.tenantId
 		const userId = user?.id
@@ -141,6 +144,17 @@ export class XpertWorkspaceAccessService {
 
 		if (!sameTenant || isArchived) {
 			return this.emptyCapabilities()
+		}
+
+		const apiKeyBoundWorkspaceId = await this.currentApiKeyBoundWorkspaceIdForUser(user)
+		const hasApiKeyWorkspaceAccess = !!apiKeyBoundWorkspaceId && workspace.id === apiKeyBoundWorkspaceId
+		if (hasApiKeyWorkspaceAccess) {
+			return {
+				canRead: true,
+				canRun: true,
+				canWrite: false,
+				canManage: false
+			}
 		}
 
 		if (isCurrentOrganizationWorkspace) {
@@ -181,10 +195,11 @@ export class XpertWorkspaceAccessService {
 		return isTenantSharedXpertWorkspace(workspace)
 	}
 
-	private applyCurrentReadScope(query: SelectQueryBuilder<XpertWorkspace>, user: IUser) {
+	private async applyCurrentReadScope(query: SelectQueryBuilder<XpertWorkspace>, user: IUser) {
 		const organizationId = RequestContext.getOrganizationId()
 		const isTenantAdmin = user.role?.name === RolesEnum.SUPER_ADMIN || user.role?.name === RolesEnum.ADMIN
 		const userId = user.id
+		const apiKeyBoundWorkspaceId = await this.currentApiKeyBoundWorkspaceIdForUser(user)
 
 		if (organizationId) {
 			query.andWhere(
@@ -213,6 +228,9 @@ export class XpertWorkspaceAccessService {
 									)
 							})
 						)
+					if (apiKeyBoundWorkspaceId) {
+						scopeQb.orWhere('workspace.id = :apiKeyBoundWorkspaceId', { apiKeyBoundWorkspaceId })
+					}
 				})
 			)
 			return
@@ -225,9 +243,61 @@ export class XpertWorkspaceAccessService {
 					memberQb
 						.where('workspace.ownerId = :ownerId', { ownerId: userId })
 						.orWhere('member.id = :userId', { userId })
+					if (apiKeyBoundWorkspaceId) {
+						memberQb.orWhere('workspace.id = :apiKeyBoundWorkspaceId', { apiKeyBoundWorkspaceId })
+					}
 				})
 			)
 		}
+	}
+
+	private async currentApiKeyBoundWorkspaceIdForUser(user?: IUser | null) {
+		const apiPrincipal = RequestContext.currentApiPrincipal() as IApiPrincipal | null
+		const apiKey = apiPrincipal?.apiKey
+		const entityId = apiKey?.entityId?.trim()
+		const userId = user?.id
+		const tenantId = user?.tenantId
+		const isPublicXpertClientSecret =
+			apiPrincipal?.principalType === 'client_secret' &&
+			apiPrincipal.clientSecretBindingType === SecretTokenBindingType.PUBLIC_XPERT
+
+		if (!isPublicXpertClientSecret && apiKey?.type === ApiKeyBindingType.WORKSPACE) {
+			return entityId || null
+		}
+
+		if (apiKey?.type !== ApiKeyBindingType.ASSISTANT || !entityId || !tenantId) {
+			return null
+		}
+
+		if (!isPublicXpertClientSecret && !userId) {
+			return null
+		}
+
+		const query = this.workspaceRepository.manager
+			.createQueryBuilder()
+			.select('xpert."workspaceId"', 'workspaceId')
+			.addSelect('xpert."userId"', 'userId')
+			.from('xpert', 'xpert')
+			.where('xpert.id = :xpertId', { xpertId: entityId })
+			.andWhere('xpert."tenantId" = :tenantId', { tenantId })
+
+		if (isPublicXpertClientSecret) {
+			query
+				.andWhere('xpert."publishAt" IS NOT NULL')
+				.andWhere(`COALESCE((xpert.app)::jsonb ->> 'enabled', 'false') = 'true'`)
+				.andWhere(`COALESCE((xpert.app)::jsonb ->> 'public', 'false') = 'true'`)
+		}
+
+		const xpert = await query.limit(1).getRawOne<{ workspaceId?: string | null; userId?: string | null }>()
+		if (!xpert?.workspaceId) {
+			return null
+		}
+
+		if (!isPublicXpertClientSecret && xpert.userId !== userId) {
+			return null
+		}
+
+		return xpert.workspaceId
 	}
 
 	private normalizeRelations(relations?: FindOptionsRelations<XpertWorkspace> | string[]) {

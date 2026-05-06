@@ -35,16 +35,19 @@ describe('mergeRuntimeContextWithEnv', () => {
 		})
 	})
 
-	it('merges existing context env with environment values', () => {
+	it('lets request context env override environment values', () => {
 		expect(
 			mergeRuntimeContextWithEnv(
 				{
 					env: {
 						existing: 'value',
-						region: 'us'
+						region: 'us',
+						oidc_token: 'request-token',
+						custom_runtime_id: 'runtime-1'
 					}
 				},
 				{
+					name: 'Default',
 					variables: [
 						{
 							name: 'region',
@@ -52,17 +55,29 @@ describe('mergeRuntimeContextWithEnv', () => {
 							type: 'default'
 						},
 						{
+							name: 'oidc_token',
+							value: '',
+							type: 'secret'
+						},
+						{
+							name: 'custom_runtime_id',
+							value: '',
+							type: 'secret'
+						},
+						{
 							name: 'workspaceId',
 							value: 'workspace-1',
 							type: 'secret'
 						}
 					]
-				} as any
+				}
 			)
 		).toEqual({
 			env: {
 				existing: 'value',
-				region: 'cn',
+				region: 'us',
+				oidc_token: 'request-token',
+				custom_runtime_id: 'runtime-1',
 				workspaceId: 'workspace-1'
 			}
 		})

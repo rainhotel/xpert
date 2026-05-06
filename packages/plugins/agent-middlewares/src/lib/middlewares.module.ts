@@ -3,7 +3,6 @@ import { CqrsModule } from '@nestjs/cqrs';
 import chalk from 'chalk';
 import { TodoListMiddleware } from './todoListMiddleware';
 import { SummarizationMiddleware } from './summarization';
-import { HumanInTheLoopMiddleware } from './hitl';
 import { ClientToolMiddleware } from './clientTool';
 import { ClientEffectMiddleware } from './clientEffect';
 import { LLMToolSelectorNameMiddleware } from './llmToolSelector';
@@ -21,7 +20,6 @@ import { ContextCompressionMiddleware } from './contextCompression';
     providers: [
 		SummarizationMiddleware,
         TodoListMiddleware,
-		HumanInTheLoopMiddleware,
 		LLMToolSelectorNameMiddleware,
 		ClientToolMiddleware,
 		ClientEffectMiddleware,

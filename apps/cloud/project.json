@@ -111,6 +111,11 @@
             "input": "node_modules/@xpert-ai/chatkit-ui/dist/app/assets",
             "output": "./assets"
           },
+          {
+            "glob": "**/*",
+            "input": "node_modules/@xpert-ai/chatkit-ui/dist/app/pets",
+            "output": "./pets"
+          },
           "apps/cloud/src/favicon.ico",
           "apps/cloud/src/assets",
           "apps/cloud/src/manifest.webmanifest"

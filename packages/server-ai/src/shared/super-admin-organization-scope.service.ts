@@ -33,13 +33,13 @@ export class SuperAdminOrganizationScopeService {
 	}
 
 	private assertCanOverrideScope(user: IUser, organizationId: string) {
-		if (user?.role?.name !== RolesEnum.SUPER_ADMIN) {
-			throw new ForbiddenException('Only SUPER_ADMIN can override the organization scope for a request.')
-		}
-
 		const scope = LegacyRequestContext.getScope()
 		if (scope.level === 'organization' && scope.organizationId === organizationId) {
 			return
+		}
+
+		if (user?.role?.name !== RolesEnum.SUPER_ADMIN) {
+			throw new ForbiddenException('Only SUPER_ADMIN can override the organization scope for a request.')
 		}
 
 		if (!LegacyRequestContext.isTenantScope()) {

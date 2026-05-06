@@ -1,4 +1,4 @@
-import { ApiKeyBindingType, IApiPrincipal, isTenantSharedXpertWorkspace } from '@xpert-ai/contracts'
+import { ApiKeyBindingType, IApiPrincipal, isTenantSharedXpertWorkspace, SecretTokenBindingType } from '@xpert-ai/contracts'
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { uniq } from 'lodash'
@@ -61,6 +61,29 @@ export class PublishedXpertAccessService {
 
         const workspaceId = apiKey.entityId?.trim()
         return workspaceId || null
+    }
+
+    private currentPublicXpertId() {
+        const apiPrincipal = this.currentApiPrincipal() as IApiPrincipal | null
+        if (
+            apiPrincipal?.principalType !== 'client_secret' ||
+            apiPrincipal.clientSecretBindingType !== SecretTokenBindingType.PUBLIC_XPERT
+        ) {
+            return null
+        }
+
+        const apiKey = apiPrincipal.apiKey
+        if (apiKey?.type !== ApiKeyBindingType.ASSISTANT || !apiKey.entityId?.trim()) {
+            throw new ForbiddenException('Public assistant session is not bound to an assistant.')
+        }
+
+        return apiKey.entityId.trim()
+    }
+
+    private currentRequestedUserId() {
+        const apiPrincipal = this.currentApiPrincipal() as IApiPrincipal | null
+        const userId = apiPrincipal?.requestedUserId?.trim()
+        return userId || null
     }
 
     private currentOrganizationId() {
@@ -128,9 +151,56 @@ export class PublishedXpertAccessService {
         return qb
     }
 
+    private buildPublicXpertBoundQuery(publicXpertId: string, options?: PublishedXpertQueryOptions) {
+        const tenantId = this.currentTenantId()
+        const qb = this.repository
+            .createQueryBuilder('xpert')
+            .where('xpert.tenantId = :tenantId', {
+                tenantId
+            })
+            .andWhere('xpert.publishAt IS NOT NULL')
+            .andWhere('xpert.id = :publicXpertId', {
+                publicXpertId
+            })
+
+        this.applyPublicChatAppFilter(qb)
+        this.applyPublishedFilters(qb, options?.where)
+
+        if (options?.order) {
+            Object.entries(options.order).forEach(([name, direction]) => {
+                qb.addOrderBy(`xpert.${name}`, direction?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC')
+            })
+        }
+        if (options?.take != null) {
+            qb.take(options.take)
+        }
+        if (options?.skip != null) {
+            qb.skip(options.skip)
+        }
+
+        return qb
+    }
+
+    private applyPublicChatAppFilter(qb: SelectQueryBuilder<Xpert>) {
+        return qb
+            .andWhere(`COALESCE((xpert.app)::jsonb ->> 'enabled', 'false') = 'true'`)
+            .andWhere(`COALESCE((xpert.app)::jsonb ->> 'public', 'false') = 'true'`)
+    }
+
+    private assertPublicChatAppXpert(xpert: Xpert) {
+        if (!xpert.app?.enabled || !xpert.app.public) {
+            throw new ForbiddenException('You do not have access to this assistant.')
+        }
+    }
+
     private buildAccessibleQuery(options?: PublishedXpertQueryOptions) {
+        const publicXpertId = this.currentPublicXpertId()
+        if (publicXpertId) {
+            return this.buildPublicXpertBoundQuery(publicXpertId, options)
+        }
+
         const workspaceId = this.currentWorkspaceApiKeyWorkspaceId()
-        if (workspaceId) {
+        if (workspaceId && !this.currentRequestedUserId()) {
             return this.buildWorkspaceBoundQuery(workspaceId, options)
         }
 
@@ -159,6 +229,14 @@ export class PublishedXpertAccessService {
                 tenantId
             })
             .andWhere('xpert.publishAt IS NOT NULL')
+
+        if (workspaceId) {
+            qb.andWhere('xpert.workspaceId = :workspaceApiKeyWorkspaceId', {
+                workspaceApiKeyWorkspaceId: workspaceId
+            })
+        }
+
+        qb
             .andWhere(
                 new Brackets((scopeQb) => {
                     scopeQb
@@ -276,6 +354,17 @@ export class PublishedXpertAccessService {
     }
 
     async getAccessiblePublishedXpert(id: string, options?: Omit<FindOneOptions<Xpert>, 'where'>) {
+        const publicXpertId = this.currentPublicXpertId()
+        if (publicXpertId) {
+            if (publicXpertId !== id) {
+                throw new ForbiddenException('You do not have access to this assistant.')
+            }
+
+            const xpert = await this.getPublishedXpertInTenant(id, options)
+            this.assertPublicChatAppXpert(xpert)
+            return xpert
+        }
+
         const xpert = await this.getPublishedXpertInTenant(id, options)
         const workspaceId = this.currentWorkspaceApiKeyWorkspaceId()
 
@@ -283,7 +372,9 @@ export class PublishedXpertAccessService {
             if (xpert.workspaceId !== workspaceId) {
                 throw new ForbiddenException('You do not have access to this assistant.')
             }
-            return xpert
+            if (!this.currentRequestedUserId()) {
+                return xpert
+            }
         }
 
         const userId = this.currentUserId()

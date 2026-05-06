@@ -3,6 +3,7 @@ import {
 	IFileAssetDestination,
 	IStorageFile,
 	IUploadFileTarget,
+	SecretTokenBindingType,
 	TChatOptions,
 	TChatRequest
 } from '@xpert-ai/contracts'
@@ -209,6 +210,9 @@ export class AIV1Controller {
 
 		await this.secretTokenService.create({
 			entityId: apiKey?.id,
+			type: SecretTokenBindingType.API_KEY,
+			tenantId: apiKey?.tenantId,
+			organizationId: apiKey?.organizationId,
 			token,
 			validUntil
 		})

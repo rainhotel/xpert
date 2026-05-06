@@ -38,7 +38,13 @@
           {{ 'PAC.Files.BackToTree' | translate: { Default: 'Back to tree' } }}
         </button>
       </div>
-      <div class="truncate font-mono text-xs text-text-tertiary">
+      <div
+        class="truncate font-mono text-xs text-text-tertiary"
+        data-file-path-label="viewer"
+        [zTooltip]="filePath() || ('PAC.Files.NoFileSelected' | translate: { Default: 'No file selected' })"
+        zPosition="top"
+        [title]="filePath() || ('PAC.Files.NoFileSelected' | translate: { Default: 'No file selected' })"
+      >
         {{ filePath() || ('PAC.Files.NoFileSelected' | translate: { Default: 'No file selected' }) }}
       </div>
       <div class="mt-1 flex flex-wrap items-center gap-2">

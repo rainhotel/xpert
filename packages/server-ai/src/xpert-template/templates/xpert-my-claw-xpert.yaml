@@ -189,6 +189,7 @@ nodes:
       key: Middleware_1tcPT6q0VR
       title: ModelRetryMiddleware
       provider: ModelRetryMiddleware
+      required: true
   - type: workflow
     key: Middleware_zOVW7Pzo8N
     position:
@@ -200,6 +201,7 @@ nodes:
       key: Middleware_zOVW7Pzo8N
       title: scheduler
       provider: scheduler
+      required: true
   - type: workflow
     key: Middleware_mkPBzOxg9l
     position:
@@ -211,6 +213,7 @@ nodes:
       key: Middleware_mkPBzOxg9l
       title: FileMemorySystemMiddleware
       provider: FileMemorySystemMiddleware
+      required: true
   - type: workflow
     key: Middleware_Og6WsPgSJx
     position:
@@ -222,6 +225,7 @@ nodes:
       key: Middleware_Og6WsPgSJx
       title: ContextCompressionMiddleware
       provider: ContextCompressionMiddleware
+      required: true
   - type: workflow
     key: Middleware_gbVCRaDNrL
     position:
@@ -233,6 +237,7 @@ nodes:
       key: Middleware_gbVCRaDNrL
       title: SandboxShell
       provider: SandboxShell
+      required: true
   - type: workflow
     key: Middleware_Rwf5Mlc5Vp
     position:
@@ -244,6 +249,7 @@ nodes:
       key: Middleware_Rwf5Mlc5Vp
       title: SandboxFile
       provider: SandboxFile
+      required: true
   - type: workflow
     key: Middleware_UrHWMDuqBe
     position:
@@ -255,6 +261,7 @@ nodes:
       key: Middleware_UrHWMDuqBe
       title: WebTools
       provider: WebTools
+      required: true
   - type: workflow
     key: Middleware_gY2jduTeWL
     position:
@@ -266,6 +273,7 @@ nodes:
       key: Middleware_gY2jduTeWL
       title: todoListMiddleware
       provider: todoListMiddleware
+      required: true
   - type: workflow
     key: Middleware_h23z8r4aNO
     position:
@@ -277,6 +285,7 @@ nodes:
       key: Middleware_h23z8r4aNO
       title: LoopGuardMiddleware
       provider: LoopGuardMiddleware
+      required: true
   - type: workflow
     key: Middleware_jNrKMo464z
     position:
@@ -288,6 +297,7 @@ nodes:
       key: Middleware_jNrKMo464z
       title: ViewImageMiddleware
       provider: ViewImageMiddleware
+      required: true
   - type: workflow
     key: Middleware_W2UbxcpcDy
     position:
@@ -299,6 +309,7 @@ nodes:
       key: Middleware_W2UbxcpcDy
       title: DanglingToolCallMiddleware
       provider: DanglingToolCallMiddleware
+      required: true
   - type: workflow
     key: Middleware_LrWwN2N1Kc
     position:
@@ -310,6 +321,7 @@ nodes:
       key: Middleware_LrWwN2N1Kc
       title: skillsMiddleware
       provider: skillsMiddleware
+      required: true
 connections:
   - type: workflow
     key: Agent_xtcQNJthR8/Middleware_1tcPT6q0VR

@@ -9,8 +9,12 @@ jest.mock('../xpert', () => ({
 jest.mock('../skill-package', () => ({
     SkillPackageService: class {}
 }))
+jest.mock('../prompt-workflow', () => ({
+    PromptWorkflowService: class {}
+}))
 
 import { AssistantsController } from './assistant.controller'
+import { RuntimeCommandService } from './runtime-command.service'
 
 describe('AssistantsController', () => {
     it('hides required middleware nodes from runtime plugin capabilities', async () => {
@@ -212,7 +216,32 @@ describe('AssistantsController', () => {
                                 type: 'svg',
                                 value: `<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" /></svg>`,
                                 alt: 'Default Skill'
-                            }
+                            },
+                            commands: [
+                                {
+                                    name: 'review',
+                                    label: 'Review',
+                                    description: 'Review the selected context',
+                                    action: {
+                                        type: 'submit_prompt',
+                                        template: 'Review this: {{args}}'
+                                    }
+                                },
+                                {
+                                    name: 'Invalid Name',
+                                    action: {
+                                        type: 'submit_prompt',
+                                        template: 'Ignore me'
+                                    }
+                                },
+                                {
+                                    name: 'empty',
+                                    action: {
+                                        type: 'submit_prompt',
+                                        template: ''
+                                    }
+                                }
+                            ]
                         },
                         skillIndex: {
                             name: 'Default Skill',
@@ -257,12 +286,23 @@ describe('AssistantsController', () => {
                 ]
             }))
         }
+        const promptWorkflowService = {
+            resolveRuntimeCommandProfile: jest.fn(async () => ({
+                hasProfile: false,
+                xpertCommands: [],
+                workspaceCommands: [],
+                preferredSkillEntries: [],
+                skillEntries: []
+            }))
+        }
 
         const controller = new AssistantsController(
             publishedXpertAccessService as any,
             assistantBindingService as any,
             agentMiddlewareRegistry as any,
-            skillPackageService as any
+            skillPackageService as any,
+            new RuntimeCommandService(),
+            promptWorkflowService as any
         )
 
         await expect(controller.getRuntimeCapabilities('assistant-1')).resolves.toEqual({
@@ -361,6 +401,57 @@ describe('AssistantsController', () => {
                     toolNames: ['delegate'],
                     toolsetNames: ['Collaborator Tools'],
                     knowledgebaseNames: ['Collaborator Knowledge']
+                }
+            ],
+            commands: [
+                {
+                    name: 'review',
+                    label: 'Review',
+                    description: 'Review the selected context',
+                    icon: {
+                        type: 'svg',
+                        value: `<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" /></svg>`,
+                        alt: 'Default Skill'
+                    },
+                    category: 'prompt_workflow',
+                    argsHint: '<args>',
+                    kind: 'prompt_workflow',
+                    workflow: {
+                        type: 'prompt_workflow',
+                        name: 'review',
+                        label: 'Review',
+                        description: 'Review the selected context'
+                    },
+                    meta: {
+                        icon: {
+                            type: 'svg',
+                            value: `<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" /></svg>`,
+                            alt: 'Default Skill'
+                        }
+                    },
+                    action: {
+                        type: 'submit_prompt',
+                        template: 'Review this: {{args}}',
+                        runtimeCapabilities: {
+                            mode: 'allowlist',
+                            skills: {
+                                workspaceId: 'workspace-1',
+                                ids: ['skill-default']
+                            },
+                            plugins: {
+                                nodeKeys: []
+                            },
+                            subAgents: {
+                                nodeKeys: []
+                            }
+                        }
+                    },
+                    source: {
+                        type: 'skill',
+                        skillId: 'skill-default',
+                        workspaceId: 'workspace-1',
+                        label: 'Default Skill'
+                    }
                 }
             ]
         })
